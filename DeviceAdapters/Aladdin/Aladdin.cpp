@@ -6,7 +6,10 @@
 // DESCRIPTION:   Aladdin pump controller adapter
 // COPYRIGHT:     University of California, San Francisco, 2011
 //
-// AUTHOR:        Kurt Thorn, UCSF, November 2011
+// AUTHOR:        Original device adapter by Kurt Thorn, UCSF, November 2011
+//				  Extension to multi-pumps and the possibility to set custom
+//                programs on each pump by Joran Deschamps and Thomas Chartier,
+//				  EMBL, May 2016	
 //
 // LICENSE:       This file is distributed under the BSD license.
 //                License text is included with the source distribution.
@@ -36,7 +39,9 @@
 #include <math.h>
 #include "../../MMDevice/ModuleInterface.h"
 #include "../../MMDevice/DeviceUtils.h"
-#include <sstream>
+#include <iostream>
+#include <fstream>
+
 
 // Controller
 const char* g_ControllerName = "Aladdin";
@@ -102,6 +107,11 @@ AladdinController::AladdinController(const char* name) :
    CPropertyAction* pAct = new CPropertyAction (this, &AladdinController::OnPort);
    CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
 
+   // Number of pumps
+   pAct = new CPropertyAction(this, &AladdinController::OnPumpNumber);
+   CreateProperty("PumpNr", "1", MM::Integer, false, pAct, true);
+   SetPropertyLimits("PumpNr", 1, 99);
+
    EnableDelay(); // signals that the delay setting will be used
    UpdateStatus();
 }
@@ -131,56 +141,66 @@ void AladdinController::GetName(char* name) const
 int AladdinController::Initialize()
 {
    this->LogMessage("AladdinController::Initialize()");
+   int ret = 0;
 
-   GeneratePropertyVolume();
-   GeneratePropertyDiameter();
-   GeneratePropertyRate();
-   GeneratePropertyDirection();
-   GeneratePropertyRun();
-   
-   CreateDefaultProgram();
+   // for each pump
+   for (long i=0; i <Npumps_; i++){
+	  stringstream ss;
+		ss << "Pump nmbr: "<< i;
+	   this->LogMessage(ss.str());
+	   ss.clear();
+
+      CPropertyActionEx *pExAct1 = new CPropertyActionEx(this, &AladdinController::OnVolume, i);
+      CPropertyActionEx *pExAct2 = new CPropertyActionEx(this, &AladdinController::OnRun, i);
+      CPropertyActionEx *pExAct3 = new CPropertyActionEx(this, &AladdinController::OnRate, i);
+      CPropertyActionEx *pExAct4 = new CPropertyActionEx(this, &AladdinController::OnDiameter, i);
+      CPropertyActionEx *pExAct5 = new CPropertyActionEx(this, &AladdinController::OnPhase, i);
+      CPropertyActionEx *pExAct6 = new CPropertyActionEx(this, &AladdinController::OnFunction, i);
+      CPropertyActionEx *pExAct7 = new CPropertyActionEx(this, &AladdinController::OnDirection, i);
+
+      std::ostringstream vol,rate,run,diam,phase,func,dir,rateun;
+      vol << "Volume (uL) Pump" << i;
+      rate << "Rate (uL/min) Pump" << i;
+      run << "Run Pump" << i;
+      diam << "Diameter (mm) Pump" << i;
+      phase << "Phase Pump" << i;
+      func << "Function Pump" << i;
+      dir << "Direction Pump" << i;
+      rateun << "Rate Unit Pump" << i;
+
+	  
+	  this->LogMessage("Start creating the properties");
+	  
+      ret += CreateProperty(vol.str().c_str(), "0.0", MM::Float, false, pExAct1);
+      
+	  ret += CreateProperty(run.str().c_str(), "0", MM::Integer, false, pExAct2);
+      AddAllowedValue(run.str().c_str(), "0");
+      AddAllowedValue(run.str().c_str(), "1");
+      
+	  ret += CreateProperty(rate.str().c_str(), "0.0", MM::Float, false, pExAct3);
+
+	  ret += CreateProperty(diam.str().c_str(), "0.0", MM::Float, false, pExAct4);
+      
+	  ret += CreateProperty(phase.str().c_str(), "0", MM::Integer, false, pExAct5);
+	  SetPropertyLimits(phase.str().c_str(), 1, 41);
+
+      ret += CreateProperty(func.str().c_str(), "", MM::String, false, pExAct6);
+      
+	  ret += CreateProperty(dir.str().c_str(), "Infuse", MM::String, false, pExAct7);
+      AddAllowedValue(dir.str().c_str(), g_Keyword_Infuse);
+      AddAllowedValue(dir.str().c_str(), g_Keyword_Withdraw);
+
+	  
+	  ss << "Done, ret: "<< ret;
+	  this->LogMessage(ss.str());
+	  
+
+      if (ret != DEVICE_OK)
+         return ret;
+   }
 
    initialized_ = true;
    return HandleErrors();
-
-}
-
-/////////////////////////////////////////////
-// Property Generators
-/////////////////////////////////////////////
-
-void AladdinController::GeneratePropertyVolume()
-{
-   CPropertyAction* pAct = new CPropertyAction (this, &AladdinController::OnVolume);
-   CreateProperty("Volume-uL", "0", MM::Float, false, pAct);
-}
-
-void AladdinController::GeneratePropertyDiameter()
-{
-   CPropertyAction* pAct = new CPropertyAction (this, &AladdinController::OnDiameter);
-   CreateProperty("SyringeDiameter", "4.699", MM::Float, false, pAct);
-}
-
-void AladdinController::GeneratePropertyRate()
-{
-   CPropertyAction* pAct = new CPropertyAction (this, &AladdinController::OnRate);
-   CreateProperty("FlowRate-uL/min", "0", MM::Float, false, pAct);
-}
-
-void AladdinController::GeneratePropertyDirection()
-{
-   CPropertyAction* pAct = new CPropertyAction (this, &AladdinController::OnDirection);
-   CreateProperty("Direction", g_Keyword_Infuse, MM::String, false, pAct);
-   AddAllowedValue("Direction", g_Keyword_Infuse);  
-   AddAllowedValue("Direction", g_Keyword_Withdraw);  
-}
-
-void AladdinController::GeneratePropertyRun()
-{
-   CPropertyAction* pAct = new CPropertyAction (this, &AladdinController::OnRun);
-   CreateProperty("Run", "0", MM::Integer, false, pAct);
-   AddAllowedValue("Run", "0");  
-   AddAllowedValue("Run", "1");  
 }
 
 int AladdinController::Shutdown()
@@ -213,8 +233,6 @@ void AladdinController::StripString(string& StringToModify)
 
 
 
-
-
 ///////////////////////////////////////////////////////////////////////////////
 // Action handlers
 ///////////////////////////////////////////////////////////////////////////////
@@ -241,91 +259,135 @@ int AladdinController::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
    return HandleErrors();
 }
 
-int AladdinController::OnVolume(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AladdinController::OnPumpNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(Npumps_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(Npumps_);
+   }
 
+   return DEVICE_OK;
+}
+
+int AladdinController::OnVolume(MM::PropertyBase* pProp, MM::ActionType eAct, long pump)
+{
    double volume;
    if (eAct == MM::BeforeGet)
    {
-      GetVolume(volume);
+      GetVolume(pump, volume);
       pProp->Set(volume);
    }
    else if (eAct == MM::AfterSet)
    {
       pProp->Get(volume);
-      SetVolume(volume);
+      SetVolume(pump, volume);
    }   
 
    return HandleErrors();
 }
 
-int AladdinController::OnDiameter(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AladdinController::OnDiameter(MM::PropertyBase* pProp, MM::ActionType eAct, long pump)
 {
-
    double diameter;
    if (eAct == MM::BeforeGet)
    {
-      GetDiameter(diameter);
+      GetDiameter(pump, diameter);
       pProp->Set(diameter);
    }
    else if (eAct == MM::AfterSet)
    {
       pProp->Get(diameter);
-      SetDiameter(diameter);
+      SetDiameter(pump, diameter);
    }   
 
    return HandleErrors();
 }
 
-int AladdinController::OnRate(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AladdinController::OnRate(MM::PropertyBase* pProp, MM::ActionType eAct, long pump)
 {
-
    double rate;
    if (eAct == MM::BeforeGet)
    {
-      GetRate(rate);
+      GetRate(pump, rate);
       pProp->Set(rate);
    }
    else if (eAct == MM::AfterSet)
    {
       pProp->Get(rate);
-      SetRate(rate);
+      SetRate(pump, rate);
    }   
 
    return HandleErrors();
 }
 
-int AladdinController::OnDirection(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AladdinController::OnDirection(MM::PropertyBase* pProp, MM::ActionType eAct, long pump)
 {
 
-   string dir;
+   string direction;
    if (eAct == MM::BeforeGet)
    {
-      GetDirection(dir);
-      pProp->Set(dir.c_str());
+      GetDirection(pump, direction);
+      pProp->Set(direction.c_str());
    }
    else if (eAct == MM::AfterSet)
    {
-      pProp->Get(dir);
-      SetDirection(dir);
+      pProp->Get(direction);
+      SetDirection(pump, direction);
    }   
 
    return HandleErrors();
 }
 
-int AladdinController::OnRun(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AladdinController::OnRun(MM::PropertyBase* pProp, MM::ActionType eAct, long pump)
 {
-
    long run;
    if (eAct == MM::BeforeGet)
    {
-      GetRun(run);
+      GetRun(pump, run);
       pProp->Set(run);
    }
    else if (eAct == MM::AfterSet)
    {
       pProp->Get(run);
-      SetRun(run);
+      SetRun(pump, run);
+   }   
+
+   return HandleErrors();
+}
+
+int AladdinController::OnPhase(MM::PropertyBase* pProp, MM::ActionType eAct, long pump)
+{
+   long phase;
+   if (eAct == MM::BeforeGet)
+   {
+      GetPhase(pump, phase);
+      pProp->Set(phase);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(phase);
+      SetPhase(pump, phase);
+   }   
+
+   return HandleErrors();
+}
+
+int AladdinController::OnFunction(MM::PropertyBase* pProp, MM::ActionType eAct, long pump)
+{
+   string function;
+   if (eAct == MM::BeforeGet)
+   {
+      GetFunction(pump, function);
+	  pProp->Set(function.c_str());
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(function);
+      SetFunction(pump, function);
    }   
 
    return HandleErrors();
@@ -335,47 +397,73 @@ int AladdinController::OnRun(MM::PropertyBase* pProp, MM::ActionType eAct)
 // Utility methods
 ///////////////////////////////////////////////////////////////////////////////
 
-
-void AladdinController::CreateDefaultProgram()
+/*void AladdinController::CreateDefaultProgram()
 //Set up the default program that we can run to do a simple infusion
 {
-   double rate;
-   GetRate(rate); //Get current rate and set it in the program
+
+   //test 2
+   SendPurge("0 PHN1");
+   SendPurge("0 FUN RAT");
+   SendPurge("0 RAT 300 UM");
+   SendPurge("0 VOL 20");
+   SendPurge("0 PHN2");
+   SendPurge("0 FUN INC");
+   SendPurge("0 RAT 300");
+   SendPurge("0 VOL 50");
+   SendPurge("0 PHN3");
+   SendPurge("0 FUN STP");
+
+   SendPurge("1 PHN1");
+   SendPurge("1 FUN RAT");
+   SendPurge("1 RAT 380 UM");
+   SendPurge("1 VOL 25");
+   SendPurge("1 PHN2");
+   SendPurge("1 FUN INC");
+   SendPurge("1 RAT 380");
+   SendPurge("1 VOL 50");
+   SendPurge("1 PHN3");
+   SendPurge("1 FUN STP");
+
+   SendPurge("2 PHN1");
+   SendPurge("2 FUN RAT");
+   SendPurge("2 RAT 450 UM");
+   SendPurge("2 VOL 30");
+   SendPurge("2 PHN2");
+   SendPurge("2 FUN INC");
+   SendPurge("2 RAT 450");
+   SendPurge("2 VOL 50");
+   SendPurge("2 PHN3");
+   SendPurge("2 FUN STP");
+
+   
+   SendPurge("0 PHN1");
+   SendPurge("1 PHN1");
+   SendPurge("2 PHN1");
+
+}*/
+
+void AladdinController::SendPurge(string s){
+   Send(s); //Phase 2
+   ReceiveOneLine();
    Purge();
-   Send("PHN1"); //Phase 1
-   ReceiveOneLine();
-   stringstream msg;
-   msg << "FUN RAT" << rate << "UM"; //set pumping rate in uL/min 
-   Purge();
-   Send(msg.str());
-   ReceiveOneLine();
-   Purge();
-   Send("PHN2"); //Phase 2
-   ReceiveOneLine();
-   Purge();
-   Send("FUN STP"); //Stop
-   ReceiveOneLine();
-   Send("PHN1"); //Set back to Phase 1
-   ReceiveOneLine();
 }
 
-void AladdinController::SetVolume(double volume)
+void AladdinController::SetVolume(long pump, double volume)
 {
-   volume = volume/1000; //pump volume is always set in mL
+   //volume = volume/1000; //pump volume is always set in mL
    stringstream msg;
-   msg << "VOL" << volume;
+   msg << pump << "VOL" << volume;
    Purge();
    Send(msg.str());
    ReceiveOneLine();
-
 }
 
-void AladdinController::GetVolume(double& volume)
+void AladdinController::GetVolume(long pump, double& volume)
 {
    stringstream msg;
    string ans;
    string units;
-   msg << "VOL";
+   msg << pump << "0 VOL";
    Purge();
    Send(msg.str());
    buf_string_ = "";
@@ -384,61 +472,58 @@ void AladdinController::GetVolume(double& volume)
    if (! buf_string_.empty())
        {
          volume = atof(buf_string_.substr(4,5).c_str());
-		 units = buf_string_.substr(9,1).c_str();
+		 units = buf_string_.substr(10,1).c_str();
 		 if (units.compare("M") == 0)
 			 volume = volume*1000; //return volume in uL
       }
 
 }
 
-void AladdinController::SetDiameter(double diameter)
+void AladdinController::SetDiameter(long pump, double diameter)
 {
    stringstream msg;
-   msg << "DIA" << diameter;
+   msg << pump << "DIA" << diameter;
    Purge();
    Send(msg.str());
    ReceiveOneLine();
-
 }
 
-void AladdinController::GetDiameter(double& diameter)
+void AladdinController::GetDiameter(long pump, double& diameter)
 {
    stringstream msg;
-   msg << "DIA";
+   msg << pump << "DIA";
    Purge();
    Send(msg.str());
    string answer = "";
-   GetUnterminatedSerialAnswer(answer, 9); //awaiting 9 response characters
+   GetUnterminatedSerialAnswer(answer, 10); //awaiting 10 response characters
    if (! answer.empty())
        {
          diameter = atof(answer.substr(4,5).c_str());
       }
-
 }
 
-void AladdinController::SetRate(double rate)
+void AladdinController::SetRate(long pump, double rate)
 {
    stringstream msg;
-   msg << "RAT" << rate <<"UM"; //Always set rate in uL/min
+   msg << pump << "RAT" << rate <<"UM"; //Always set rate in uL/min
    Purge();
    Send(msg.str());
    ReceiveOneLine();
-
 }
 
-void AladdinController::GetRate(double& rate)
+void AladdinController::GetRate(long pump, double& rate)
 {
    stringstream msg;
-   msg << "RAT";
+   msg << pump << "RAT";
    Purge();
    Send(msg.str());
    string answer = "";
    string units;
-   GetUnterminatedSerialAnswer(answer, 10); //awaiting 9 response characters
+   GetUnterminatedSerialAnswer(answer, 11); //awaiting 9 response characters
    if (! answer.empty())
        {
          rate = atof(answer.substr(4,5).c_str());
-		 units = answer.substr(9,2).c_str();
+		 units = answer.substr(10,2).c_str();
       }
    //units is UM uL/min, UH uL/hr, MM mL/min, MH, mL/hr
    //we want to return it in uL/min
@@ -450,19 +535,19 @@ void AladdinController::GetRate(double& rate)
 			 rate = rate*1000;
 }
 
-void AladdinController::SetDirection(string direction)
+void AladdinController::SetDirection(long pump, string direction)
 {
    stringstream msg;
    if (direction.compare(g_Keyword_Infuse) == 0)
    {
-	   msg << "DIR INF";
+	   msg << pump << "DIR INF";
 	   Purge();
 	   Send(msg.str());
 	   ReceiveOneLine();
    }
    else if (direction.compare(g_Keyword_Withdraw) == 0)
    {
-	   msg << "DIR WDR";
+	   msg << pump << "DIR WDR";
 	   Purge();
 	   Send(msg.str());
 	   ReceiveOneLine();
@@ -470,14 +555,14 @@ void AladdinController::SetDirection(string direction)
 
 }
 
-void AladdinController::GetDirection(string& direction)
+void AladdinController::GetDirection(long pump, string& direction)
 {
    stringstream msg;
-   msg << "DIR";
+   msg << pump << "DIR";
    Purge();
    Send(msg.str());
    string answer = "";
-   GetUnterminatedSerialAnswer(answer, 6); //awaiting 9 response characters
+   GetUnterminatedSerialAnswer(answer, 7); //awaiting 9 response characters
    if (! answer.empty())
        {
          if (answer.substr(4,3).compare("INF") == 0)
@@ -485,45 +570,99 @@ void AladdinController::GetDirection(string& direction)
 		 else if (answer.substr(4,3).compare("WDR") == 0)
 			 direction = g_Keyword_Withdraw;
       }
-
 }
 
-void AladdinController::GetRun(long& run)
+void AladdinController::GetRun(long pump, long& run)
 {
    stringstream msg;
-   msg << ""; //A CR will get status
+   msg << pump; 
    Purge();
    Send(msg.str());
-   string answer = "";
+   string answer = "";  
    string status = "";
-   GetUnterminatedSerialAnswer(answer, 4); //awaiting 9 response characters
+   GetUnterminatedSerialAnswer(answer, 5); //awaiting 9 response characters
    if (! answer.empty())
        {
-         if(answer.substr(3,1).compare("I") == 0 || answer.substr(3,1).compare("W") == 0)
+         if(answer.substr(4,1).compare("I") == 0 || answer.substr(4,1).compare("W") == 0)
 			run = 1;
 		 else run = 0;
       }
-
 }
 
-void AladdinController::SetRun(long run)
+void AladdinController::SetRun(long pump, long run)
 {
    stringstream msg;
    if (run == 0) //Stop pumping
    {
-     msg << "STP";
+     msg << pump << "STP";
      Purge();
      Send(msg.str());
      ReceiveOneLine();
    }
    else if (run == 1) //Start pumping
    {
-     msg << "RUN";
+     msg << pump << "RUN";
      Purge();
      Send(msg.str());
      ReceiveOneLine();
    }
+}
 
+bool AladdinController::isValidFunction(string function){
+
+	// rewrite with std::find and a vector of strings
+	if(function.substr(0,3).compare("RAT") || function.substr(0,3).compare("INC") || function.substr(0,3).compare("DEC") || function.substr(0,3).compare("STP") || function.substr(0,3).compare("JMP") ||
+		function.substr(0,3).compare("PRI") || function.substr(0,3).compare("PRL") || function.substr(0,3).compare("LOP") || function.substr(0,3).compare("LPS") || function.substr(0,3).compare("LPE") ||
+		 function.substr(0,3).compare("PAS") || function.substr(0,2).compare("IF") || function.substr(0,3).compare("EVN") || function.substr(0,3).compare("EVS") || function.substr(0,3).compare("EVR") || 
+		 function.substr(0,3).compare("BEP") || function.substr(0,3).compare("OUT")){
+		return true;
+	}
+	return false;
+}
+void AladdinController::SetFunction(long pump, string function)
+{
+	if(isValidFunction(function)){
+	 stringstream msg;
+	 msg << pump << "FUN" << function;				
+	 Purge();
+	 Send(msg.str());
+	 ReceiveOneLine();
+   }
+}
+
+void AladdinController::GetFunction(long pump, string& function)
+{
+   stringstream msg;
+   msg << pump << "FUN";
+   Purge();
+   Send(msg.str());
+   string answer = "";
+   GetUnterminatedSerialAnswer(answer, 10); //awaiting 10 response characters
+   if (! answer.empty()){
+         function = answer.substr(4,3).c_str();
+   }
+}
+
+void AladdinController::SetPhase(long pump, long phase)
+{
+   stringstream msg;
+   msg << pump << "PHN" << phase;				
+   Purge();
+   Send(msg.str());
+   ReceiveOneLine();
+}
+
+void AladdinController::GetPhase(long pump, long& phase)
+{
+   stringstream msg;
+   msg << pump << "PHN";
+   Purge();
+   Send(msg.str());
+   string answer = "";
+   GetUnterminatedSerialAnswer(answer, 10); //awaiting 10 response characters
+   if (! answer.empty()){
+         phase = atoi(answer.substr(5,2).c_str());
+   }
 }
 
 int AladdinController::HandleErrors()
@@ -534,12 +673,9 @@ int AladdinController::HandleErrors()
 }
 
 
-
 /////////////////////////////////////
 //  Communications
 /////////////////////////////////////
-
-
 void AladdinController::Send(string cmd)
 {
    int ret = SendSerialCommand(port_.c_str(), cmd.c_str(), carriage_return);
@@ -552,7 +688,10 @@ void AladdinController::ReceiveOneLine()
 {
    buf_string_ = "";
    GetSerialAnswer(port_.c_str(), line_feed, buf_string_);
-
+   std::ofstream log;
+   log.open ("Log_Pump.txt", std::ios::app);
+   log << "Line received: " << buf_string_ << "\n";
+   log.close();
 }
 
 void AladdinController::Purge()

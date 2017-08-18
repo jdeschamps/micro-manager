@@ -17,7 +17,7 @@
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
 // AUTHOR:        Kurt Thorn, UCSF, November 2011
-//
+//				  Joran Deschamps and Thomas Chartier, EMBL, May 2016
 //
 
 #ifndef _ALADDIN_H_
@@ -58,39 +58,50 @@ public:
    // action interface
    // ----------------
    int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnVolume(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnDiameter(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnRate(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnDirection(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnRun(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnVolume(MM::PropertyBase* pProp, MM::ActionType eAct, long pump);
+   int OnDiameter(MM::PropertyBase* pProp, MM::ActionType eAct, long pump);
+   int OnRate(MM::PropertyBase* pProp, MM::ActionType eAct, long pump);
+   int OnDirection(MM::PropertyBase* pProp, MM::ActionType eAct, long pump);
+   int OnRun(MM::PropertyBase* pProp, MM::ActionType eAct, long pump);
+   int OnPhase(MM::PropertyBase* pProp, MM::ActionType eAct, long pump);
+   int OnFunction(MM::PropertyBase* pProp, MM::ActionType eAct, long pump);
+   int OnPumpNumber(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
    bool initialized_;
    std::string name_;
    int error_;
    MM::MMTime changedTime_;
-
+   long Npumps_;
    std::string port_;
    string buf_string_;
    vector<string> buf_tokens_;
 
-   void SetVolume(double volume);
-   void GetVolume(double& volume);
-   void SetDiameter(double diameter);
-   void GetDiameter(double& diameter);
-   void SetRate(double rate);
-   void GetRate(double& rate);
-   void SetRun(long run);
-   void GetRun(long& run);
-   void GetDirection (string& direction);
-   void SetDirection (string direction);
-   void GeneratePropertyVolume();
-   void GeneratePropertyDiameter();
-   void GeneratePropertyRate();
-   void GeneratePropertyDirection();
-   void GeneratePropertyRun();
-   void CreateDefaultProgram();
+   void SetVolume(long pump, double volume);
+   void GetVolume(long pump, double& volume);
+   
+   void SetDiameter(long pump, double diameter);
+   void GetDiameter(long pump, double& diameter);
+   
+   void SetRate(long pump, double rate);
+   void GetRate(long pump, double& rate);
+   
+   void SetRun(long pump, long run);
+   void GetRun(long pump, long& run);
+   
+   void GetDirection(long pump, string& direction);
+   void SetDirection(long pump, string direction);
+
+   void GetFunction(long pump, string& function);
+   void SetFunction(long pump, string function);
+   
+   void SetPhase(long pump, long phase);
+   void GetPhase(long pump, long& phase);
+
+   bool isValidFunction(string function);
+
    void StripString(string& StringToModify);
+   void SendPurge(string s);
    void Send(string cmd);
    void ReceiveOneLine();
    void Purge();
