@@ -20,12 +20,15 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <iostream>
 #include <sstream>
+#include <fstream>
+
 #include "NI100X.h"
 #include "ModuleInterface.h"
 
-const char* g_DeviceNameDigitalIO = "DigitalIO";
+const char* g_DeviceNameDigitalO = "DigitalO";
 const char* g_DeviceNameShutter = "Shutter";
-const char* g_DeviceNameAnalogIO = "AnalogIO";
+const char* g_DeviceNameAnalogO = "AnalogO";
+const char* g_DeviceNameAnalogI = "AnalogI";
 
 const char* g_PropertyVolts = "Volts";
 const char* g_PropertyMinVolts = "MinVolts";
@@ -53,15 +56,17 @@ unsigned int g_shutterState = 0;
 
 using namespace std;
 
+const char* g_logpath = "Log_AnalogI.txt";
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   RegisterDevice(g_DeviceNameDigitalIO, MM::StateDevice, "NI digital IO");
-   RegisterDevice(g_DeviceNameAnalogIO, MM::SignalIODevice, "NI analog IO");
-   //RegisterDevice(g_DeviceNameShutter, MM::ShutterDevice, "");
+   RegisterDevice(g_DeviceNameDigitalO, MM::StateDevice, "NI digital Output");
+   RegisterDevice(g_DeviceNameAnalogO, MM::SignalIODevice, "NI analog Output");
+   RegisterDevice(g_DeviceNameAnalogI, MM::SignalIODevice, "NI analog Input");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -69,13 +74,17 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
    if (deviceName == 0)
       return 0;
 
-   if (strcmp(deviceName, g_DeviceNameDigitalIO) == 0)
+   if (strcmp(deviceName, g_DeviceNameDigitalO) == 0)
    {
-      return new DigitalIO;
+      return new DigitalO;
    }
-   else if (strcmp(deviceName, g_DeviceNameAnalogIO) == 0)
+   else if (strcmp(deviceName, g_DeviceNameAnalogO) == 0)
    {
-      return new AnalogIO;
+      return new AnalogO;
+   }
+   else if (strcmp(deviceName, g_DeviceNameAnalogI) == 0)
+   {
+      return new AnalogI;
    }
    return 0;
 }
@@ -131,8 +140,8 @@ std::vector<std::string> DAQDevice::GetDevices()
    return result;
 }
 
-// Provide a list of all digital ports on the device.
-std::vector<std::string> DAQDevice::GetDigitalPortsForDevice(std::string device)
+// Provide a list of all digital output ports on the device.
+std::vector<std::string> DAQDevice::GetDigitalOPortsForDevice(std::string device)
 {
    char ports[4096];
    // Provides a comma-separated list of individual lines,
@@ -148,13 +157,30 @@ std::vector<std::string> DAQDevice::GetDigitalPortsForDevice(std::string device)
    return result;
 }
 
-// Provide a list of all analog ports on the device.
-std::vector<std::string> DAQDevice::GetAnalogPortsForDevice(std::string device)
+// Provide a list of all analog output ports on the device.
+std::vector<std::string> DAQDevice::GetAnalogOPortsForDevice(std::string device)
 {
    char ports[4096];
    // Provides a comma-separated list of analog channels,
    // e.g. "Dev1/ao0, Dev1/ao1"
    DAQmxGetDevAOPhysicalChans(device.c_str(), ports, 4096);
+   std::string allPorts = ports;
+   size_t index = std::string::npos;
+   std::vector<std::string> result;
+   do
+   {
+      result.push_back(GetNextEntry(allPorts, index));
+   } while (index != std::string::npos);
+   return result;
+}
+
+// Provide a list of all analog input ports on the device.
+std::vector<std::string> DAQDevice::GetAnalogIPortsForDevice(std::string device)
+{
+   char ports[4096];
+   // Provides a comma-separated list of analog channels,
+   // e.g. "Dev1/ao0, Dev1/ao1"
+   DAQmxGetDevAIPhysicalChans(device.c_str(), ports, 4096);
    std::string allPorts = ports;
    size_t index = std::string::npos;
    std::vector<std::string> result;
@@ -377,10 +403,10 @@ std::string DAQDevice::GetNextEntry(std::string line, size_t& startIndex)
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// DigitalIO implementation
+// DigitalO implementation
 // ~~~~~~~~~~~~~~~~~~~~~~~~
 
-DigitalIO::DigitalIO() : numPos_(16), busy_(false), open_(false), state_(0)
+DigitalO::DigitalO() : numPos_(16), busy_(false), open_(false), state_(0)
 {
    task_ = 0;
    InitializeDefaultErrorMessages();
@@ -392,13 +418,13 @@ DigitalIO::DigitalIO() : numPos_(16), busy_(false), open_(false), state_(0)
    SetErrorText(ERR_CLOSE_FAILED, "Failed closing the device");
 
    // Output channel, which may be one or more lines or an entire port.
-   CPropertyAction* pAct = new CPropertyAction (this, &DigitalIO::OnChannel);
+   CPropertyAction* pAct = new CPropertyAction (this, &DigitalO::OnChannel);
    int nRet = CreateStringProperty(g_PropertyChannel, "devname", false, pAct, true);
    assert(DEVICE_OK == nRet);
 
    // Output port -- a more convenient version of the above for users that
    // don't need to specify individual lines.
-   pAct = new CPropertyAction(this, &DigitalIO::OnPort);
+   pAct = new CPropertyAction(this, &DigitalO::OnPort);
    nRet = CreateStringProperty(g_PropertyPort, "devname", false, pAct, true);
    std::vector<std::string> devices = GetDevices();
    if (devices.size() == 0)
@@ -411,7 +437,7 @@ DigitalIO::DigitalIO() : numPos_(16), busy_(false), open_(false), state_(0)
       SetProperty(g_PropertyPort, g_UseCustom);
    }
    for (std::vector<string>::iterator i = devices.begin(); i != devices.end(); ++i) {
-      std::vector<string> ports = GetDigitalPortsForDevice(*i);
+      std::vector<string> ports = GetDigitalOPortsForDevice(*i);
       for (std::vector<string>::iterator j = ports.begin(); j != ports.end(); ++j) {
          AddAllowedValue(g_PropertyPort, (*j).c_str());
       }
@@ -424,18 +450,18 @@ DigitalIO::DigitalIO() : numPos_(16), busy_(false), open_(false), state_(0)
    assert(nRet == DEVICE_OK);
 }
 
-DigitalIO::~DigitalIO()
+DigitalO::~DigitalO()
 {
    Shutdown();
 }
 
-void DigitalIO::GetName(char* name) const
+void DigitalO::GetName(char* name) const
 {
-   CDeviceUtils::CopyLimitedString(name, g_DeviceNameDigitalIO);
+   CDeviceUtils::CopyLimitedString(name, g_DeviceNameDigitalO);
 }
 
 
-int DigitalIO::Initialize()
+int DigitalO::Initialize()
 {
    SetContext(GetCoreCallback(), this);
    SetDeviceName();
@@ -443,7 +469,7 @@ int DigitalIO::Initialize()
    // -----------------
    
    // Name
-   int nRet = CreateProperty(MM::g_Keyword_Name, g_DeviceNameDigitalIO, MM::String, true);
+   int nRet = CreateProperty(MM::g_Keyword_Name, g_DeviceNameDigitalO, MM::String, true);
    if (DEVICE_OK != nRet)
    {
       return nRet;
@@ -466,7 +492,7 @@ int DigitalIO::Initialize()
    }
 
    // TODO: this and the following two properties are copy/pasted in the
-   // DigitalIO and AnalogIO classes.
+   // DigitalO and AnalogO classes.
    // Manual triggering override.
    CPropertyAction* pAct = new CPropertyAction(this, &DAQDevice::OnTriggeringEnabled);
    nRet = CreateIntegerProperty(g_PropertyTriggeringEnabled, 0, false, pAct, false);
@@ -547,7 +573,7 @@ int DigitalIO::Initialize()
    }
 
    // State
-   pAct = new CPropertyAction (this, &DigitalIO::OnState);
+   pAct = new CPropertyAction (this, &DigitalO::OnState);
    nRet = CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct);
    if (nRet != DEVICE_OK)
    {
@@ -555,7 +581,7 @@ int DigitalIO::Initialize()
    }
 
    // Label
-   pAct = new CPropertyAction(this, &DigitalIO::OnLabel);
+   pAct = new CPropertyAction(this, &DigitalO::OnLabel);
    nRet = CreateProperty(MM::g_Keyword_Label, "0", MM::String, false, pAct);
    if (nRet != DEVICE_OK)
    {
@@ -593,7 +619,7 @@ int DigitalIO::Initialize()
    return DEVICE_OK;
 }
 
-int DigitalIO::Shutdown()
+int DigitalO::Shutdown()
 {
    CancelTask();
    
@@ -606,7 +632,7 @@ int DigitalIO::Shutdown()
 // Action handlers
 ///////////////////////////////////////////////////////////////////////////////
 
-int DigitalIO::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
+int DigitalO::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -730,7 +756,7 @@ int DigitalIO::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 // Set up a digital triggering task: create the output channel,
 // load the sequence onto NI's buffer, and set up the triggering
 // rules.
-int DigitalIO::SetupDigitalTriggering(uInt32* sequence, long numVals)
+int DigitalO::SetupDigitalTriggering(uInt32* sequence, long numVals)
 {
    SetupTask();
    int error = DAQmxCreateDOChan(task_, channel_.c_str(), "",
@@ -748,7 +774,7 @@ int DigitalIO::SetupDigitalTriggering(uInt32* sequence, long numVals)
 }
 
 // Load a sequence of outputs onto NI's buffer.
-int DigitalIO::LoadBuffer(uInt32* sequence, long numVals)
+int DigitalO::LoadBuffer(uInt32* sequence, long numVals)
 {
    int32 numWritten = 0;
    // Wait 10s for writing to complete (maybe should vary based on length of
@@ -769,7 +795,7 @@ int DigitalIO::LoadBuffer(uInt32* sequence, long numVals)
 
 // Test whether triggering is possible, by attempting to set up a
 // dummy trigger sequence.
-int DigitalIO::TestTriggering()
+int DigitalO::TestTriggering()
 {
    int numSamples = 32;
    uInt32 *sequence = new uInt32[numSamples];
@@ -782,7 +808,7 @@ int DigitalIO::TestTriggering()
    return result;
 }
 
-int DigitalIO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
+int DigitalO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -796,7 +822,7 @@ int DigitalIO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int DigitalIO::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
+int DigitalO::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -817,10 +843,10 @@ int DigitalIO::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// AnalogIO implementation
+// AnalogO implementation
 // ~~~~~~~~~~~~~~~~~~~~~~~
 
-AnalogIO::AnalogIO() :
+AnalogO::AnalogO() :
       busy_(false), disable_(false), minV_(0.0), maxV_(5.0), volts_(0.0), gatedVolts_(0.0), encoding_(0),
       resolution_(0), gateOpen_(true), demo_(false)
 {
@@ -834,13 +860,13 @@ AnalogIO::AnalogIO() :
    SetErrorText(ERR_CLOSE_FAILED, "Failed closing the device");
 
    // Output channel, a.k.a. port.
-   CPropertyAction* pAct = new CPropertyAction (this, &AnalogIO::OnChannel);
+   CPropertyAction* pAct = new CPropertyAction (this, &AnalogO::OnChannel);
    int nRet = CreateStringProperty(g_PropertyChannel, "devname", false, pAct, true);
    assert(nRet == DEVICE_OK);
 
    // Output port -- a more convenient version of the above for users that
    // don't need to specify individual lines.
-   pAct = new CPropertyAction(this, &AnalogIO::OnPort);
+   pAct = new CPropertyAction(this, &AnalogO::OnPort);
    nRet = CreateStringProperty(g_PropertyPort, "devname", false, pAct, true);
    std::vector<std::string> devices = GetDevices();
    if (devices.size() == 0)
@@ -853,7 +879,7 @@ AnalogIO::AnalogIO() :
       SetProperty(g_PropertyPort, g_UseCustom);
    }
    for (std::vector<string>::iterator i = devices.begin(); i != devices.end(); ++i) {
-      std::vector<string> ports = GetAnalogPortsForDevice(*i);
+      std::vector<string> ports = GetAnalogOPortsForDevice(*i);
       for (std::vector<string>::iterator j = ports.begin(); j != ports.end(); ++j) {
          AddAllowedValue(g_PropertyPort, (*j).c_str());
       }
@@ -865,7 +891,7 @@ AnalogIO::AnalogIO() :
    assert(nRet == DEVICE_OK);
 
    // demo
-   pAct = new CPropertyAction (this, &AnalogIO::OnDemo);
+   pAct = new CPropertyAction (this, &AnalogO::OnDemo);
    nRet = CreateProperty(g_PropertyDemo, g_No, MM::String, false, pAct, true);
    assert(nRet == DEVICE_OK);
    AddAllowedValue(g_PropertyDemo, g_No);
@@ -873,29 +899,29 @@ AnalogIO::AnalogIO() :
 
    // MinVolts
    // --------
-   pAct = new CPropertyAction (this, &AnalogIO::OnMinVolts);
+   pAct = new CPropertyAction (this, &AnalogO::OnMinVolts);
    nRet = CreateProperty(g_PropertyMinVolts, "0.0", MM::Float, false, pAct, true);
    assert(nRet == DEVICE_OK);
 
    // MaxVolts
    // --------
-   pAct = new CPropertyAction (this, &AnalogIO::OnMaxVolts);
+   pAct = new CPropertyAction (this, &AnalogO::OnMaxVolts);
    nRet = CreateProperty(g_PropertyMaxVolts, "5.0", MM::Float, false, pAct, true);
    assert(nRet == DEVICE_OK);
 }
 
-AnalogIO::~AnalogIO()
+AnalogO::~AnalogO()
 {
    Shutdown();
 }
 
-void AnalogIO::GetName(char* name) const
+void AnalogO::GetName(char* name) const
 {
-   CDeviceUtils::CopyLimitedString(name, g_DeviceNameAnalogIO);
+   CDeviceUtils::CopyLimitedString(name, g_DeviceNameAnalogO);
 }
 
 
-int AnalogIO::Initialize()
+int AnalogO::Initialize()
 {
    SetContext(GetCoreCallback(), this);
    SetDeviceName();
@@ -905,7 +931,7 @@ int AnalogIO::Initialize()
    GetLabel(label);
    
    // Name
-   int nRet = CreateProperty(MM::g_Keyword_Name, g_DeviceNameAnalogIO, MM::String, true);
+   int nRet = CreateProperty(MM::g_Keyword_Name, g_DeviceNameAnalogO, MM::String, true);
    if (DEVICE_OK != nRet)
       return nRet;
 
@@ -914,8 +940,8 @@ int AnalogIO::Initialize()
    if (DEVICE_OK != nRet)
       return nRet;
 
-   // TODO: this and the following property are copy/pasted in the DigitalIO
-   // and AnalogIO classes.
+   // TODO: this and the following property are copy/pasted in the DigitalO
+   // and AnalogO classes.
    // Manual triggering override.
    CPropertyAction* pAct = new CPropertyAction(this, &DAQDevice::OnTriggeringEnabled);
    nRet = CreateIntegerProperty(g_PropertyTriggeringEnabled, 0, false, pAct, false);
@@ -974,7 +1000,7 @@ int AnalogIO::Initialize()
 
    // Volts
    // -----
-   pAct = new CPropertyAction (this, &AnalogIO::OnVolts);
+   pAct = new CPropertyAction (this, &AnalogO::OnVolts);
    nRet = CreateProperty(g_PropertyVolts, "0.0", MM::Float, false, pAct);
    if (nRet != DEVICE_OK)
       return nRet;
@@ -983,7 +1009,7 @@ int AnalogIO::Initialize()
    assert(nRet == DEVICE_OK);
 
     //Disable
-    pAct = new CPropertyAction (this, &AnalogIO::OnDisable);
+    pAct = new CPropertyAction (this, &AnalogO::OnDisable);
     nRet = CreateProperty(g_PropertyDisable, "false", MM::String, false, pAct);
     AddAllowedValue(g_PropertyDisable, "false");
     AddAllowedValue(g_PropertyDisable, "true");
@@ -1021,7 +1047,7 @@ int AnalogIO::Initialize()
    return DEVICE_OK;
 }
 
-int AnalogIO::Shutdown()
+int AnalogO::Shutdown()
 {
    if (!demo_)
    {
@@ -1033,15 +1059,15 @@ int AnalogIO::Shutdown()
    return DEVICE_OK;
 }
 
-int AnalogIO::SetSignal(double volts)
+int AnalogO::SetSignal(double volts)
 {
    ostringstream txt;
-   txt << "2P >>>> AnalogIO::SetVoltage() = " << volts; 
+   txt << "2P >>>> AnalogO::SetVoltage() = " << volts; 
    LogMessage(txt.str());
    return SetProperty(g_PropertyVolts, CDeviceUtils::ConvertToString(volts));
 }
 
-int AnalogIO::SetGateOpen(bool open)
+int AnalogO::SetGateOpen(bool open)
 {
    int ret(DEVICE_OK);
 
@@ -1067,13 +1093,13 @@ int AnalogIO::SetGateOpen(bool open)
    return DEVICE_OK;
 }
 
-int AnalogIO::GetGateOpen(bool& open)
+int AnalogO::GetGateOpen(bool& open)
 {
    open = gateOpen_;
    return DEVICE_OK;
 }
 
-int AnalogIO::ApplyVoltage(double v)
+int AnalogO::ApplyVoltage(double v)
 {
    if (!demo_)
    {
@@ -1110,7 +1136,7 @@ int AnalogIO::ApplyVoltage(double v)
    return DEVICE_OK;
 }
 
-int AnalogIO::StartDASequence()
+int AnalogO::StartDASequence()
 {
    int error;
    if (!amPreparedToTrigger_)
@@ -1146,28 +1172,28 @@ int AnalogIO::StartDASequence()
    return DEVICE_OK;
 }
 
-int AnalogIO::StopDASequence()
+int AnalogO::StopDASequence()
 {
    CancelTask();
    return DEVICE_OK;
 }
-int AnalogIO::ClearDASequence()
+int AnalogO::ClearDASequence()
 {
    sequence_.clear();
    return DEVICE_OK;
 }
-int AnalogIO::AddToDASequence(double val)
+int AnalogO::AddToDASequence(double val)
 {
    sequence_.push_back(val);
    return DEVICE_OK;
 }
-int AnalogIO::SendDASequence()
+int AnalogO::SendDASequence()
 {
    return LoadBuffer();
 }
 
 // Load our analog sequence onto the NI buffer.
-int AnalogIO::LoadBuffer()
+int AnalogO::LoadBuffer()
 {
    float64* values = new float64[sequence_.size()];
    for (int i = 0; i < sequence_.size(); ++i)
@@ -1193,7 +1219,7 @@ int AnalogIO::LoadBuffer()
 }
 
 // Attempt to set up and run a triggering task.
-int AnalogIO::TestTriggering()
+int AnalogO::TestTriggering()
 {
    int error = StopDASequence();
    if (error)
@@ -1220,7 +1246,7 @@ int AnalogIO::TestTriggering()
 // Action handlers
 ///////////////////////////////////////////////////////////////////////////////
 
-int AnalogIO::OnVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AnalogO::OnVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -1286,7 +1312,7 @@ int AnalogIO::OnVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int AnalogIO::OnMinVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AnalogO::OnMinVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -1300,7 +1326,7 @@ int AnalogIO::OnMinVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int AnalogIO::OnMaxVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AnalogO::OnMaxVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -1314,7 +1340,7 @@ int AnalogIO::OnMaxVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int AnalogIO::OnDisable(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AnalogO::OnDisable(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
     if (eAct == MM::BeforeGet)
     {
@@ -1331,7 +1357,7 @@ int AnalogIO::OnDisable(MM::PropertyBase* pProp, MM::ActionType eAct)
     return DEVICE_OK;
 }
 
-int AnalogIO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AnalogO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -1345,7 +1371,7 @@ int AnalogIO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int AnalogIO::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AnalogO::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -1364,7 +1390,7 @@ int AnalogIO::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int AnalogIO::OnDemo(MM::PropertyBase* pProp, MM::ActionType eAct)
+int AnalogO::OnDemo(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -1378,6 +1404,314 @@ int AnalogIO::OnDemo(MM::PropertyBase* pProp, MM::ActionType eAct)
          demo_ = true;
       else
          demo_ = false;
+   }
+
+   return DEVICE_OK;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// AnalogI implementation
+// ~~~~~~~~~~~~~~~~~~~~~~~
+
+AnalogI::AnalogI() :
+      busy_(false), minV_(0.0), maxV_(5.0), volts_(0.0), encoding_(0),
+      resolution_(0)
+{
+   task_ = 0;
+   InitializeDefaultErrorMessages();
+
+   // add custom error messages
+   SetErrorText(ERR_UNKNOWN_POSITION, "Invalid position (state) specified");
+   SetErrorText(ERR_INITIALIZE_FAILED, "Initialization of the device failed");
+   SetErrorText(ERR_WRITE_FAILED, "Failed to write data to the device");
+   SetErrorText(ERR_CLOSE_FAILED, "Failed closing the device");
+
+   // Output channel, a.k.a. port.
+   CPropertyAction* pAct = new CPropertyAction (this, &AnalogI::OnChannel);
+   int nRet = CreateStringProperty(g_PropertyChannel, "devname", false, pAct, true);
+   assert(nRet == DEVICE_OK);
+
+   // Input port -- a more convenient version of the above for users that
+   // don't need to specify individual lines.
+   pAct = new CPropertyAction(this, &AnalogI::OnPort);
+   nRet = CreateStringProperty(g_PropertyPort, "devname", false, pAct, true);
+   std::vector<std::string> devices = GetDevices();
+   if (devices.size() == 0)
+   {
+      AddAllowedValue(g_PropertyPort, "No valid devices found");
+   }
+   else
+   {
+      AddAllowedValue(g_PropertyPort, g_UseCustom);
+      SetProperty(g_PropertyPort, g_UseCustom);
+   }
+
+	ofstream log;
+	log.open (g_logpath, ios::app);
+	log << "--------- AnalogI --------\n";
+	log << "---- Available input ports: " << "\n";
+
+
+   for (std::vector<string>::iterator i = devices.begin(); i != devices.end(); ++i) {
+      std::vector<string> ports = GetAnalogIPortsForDevice(*i);
+      for (std::vector<string>::iterator j = ports.begin(); j != ports.end(); ++j) {
+         AddAllowedValue(g_PropertyPort, (*j).c_str());
+		 log << (*j).c_str() << "\n";
+      }
+   }
+
+   log.close();
+
+
+   // MinVolts
+   // --------
+   pAct = new CPropertyAction (this, &AnalogI::OnMinVolts);
+   nRet = CreateProperty(g_PropertyMinVolts, "0.0", MM::Float, false, pAct, true);
+   assert(nRet == DEVICE_OK);
+
+   // MaxVolts
+   // --------
+   pAct = new CPropertyAction (this, &AnalogI::OnMaxVolts);
+   nRet = CreateProperty(g_PropertyMaxVolts, "5.0", MM::Float, false, pAct, true);
+   assert(nRet == DEVICE_OK);
+}
+
+AnalogI::~AnalogI()
+{
+   Shutdown();
+}
+
+void AnalogI::GetName(char* name) const
+{
+   CDeviceUtils::CopyLimitedString(name, g_DeviceNameAnalogI);
+}
+
+
+int AnalogI::Initialize()
+{
+   SetContext(GetCoreCallback(), this);
+   SetDeviceName();
+   // set property list
+   // -----------------
+   char label[MM::MaxStrLength];
+   GetLabel(label);
+   
+   	ofstream log;
+	log.open (g_logpath, ios::app);
+	log << "---- Properties initialization " << "\n";
+
+   // Name
+   int nRet = CreateProperty(MM::g_Keyword_Name, g_DeviceNameAnalogI, MM::String, true);
+   if (DEVICE_OK != nRet)
+      return nRet;
+
+	log << "Name" << "\n";
+
+   // Description
+   nRet = CreateProperty(MM::g_Keyword_Description, "NI DAC", MM::String, true);
+   if (DEVICE_OK != nRet)
+      return nRet;
+
+	log << "Description" << "\n";
+
+   // Input trigger sample rate.
+   CPropertyAction* pAct = new CPropertyAction(this, &DAQDevice::OnSampleRate);
+   nRet = CreateIntegerProperty(g_PropertySampleRate, samplesPerSec_, false,
+         pAct, false);
+   if (DEVICE_OK != nRet)
+   {
+      return nRet;
+   }
+   
+	log << "Sample rate" << "\n";
+
+   // Volts
+   // -----
+   pAct = new CPropertyAction (this, &AnalogI::OnVolts);
+   nRet = CreateProperty(g_PropertyVolts, "0.0", MM::Float, true, pAct);
+   if (nRet != DEVICE_OK)
+      return nRet;
+
+   
+	log << "Volts" << "\n";
+
+   //nRet = SetPropertyLimits(g_PropertyVolts, minV_, maxV_);
+   //assert(nRet == DEVICE_OK);
+
+   // set up task
+   // -----------
+      int niRet = SetupTask();
+      if (niRet)
+      {
+          return niRet;
+      }
+	  
+   log << "Set-up init" << "\n";
+
+      niRet = DAQmxCreateAIVoltageChan(task_, channel_.c_str(), "", DAQmx_Val_Cfg_Default, minV_, maxV_, DAQmx_Val_Volts, ""); // here the terminal has been chosen to default, see NI manual for other choices
+      if (niRet != DAQmxSuccess)
+      {
+         return LogError(niRet, "CreateAIVoltageChan");
+      }
+
+   log << "Create AI voltage channel" << "\n";
+
+       niRet = DAQmxStartTask(task_);
+       if (niRet)
+       {
+           return LogError(niRet, "StartTask");
+       }
+  
+
+   log << "Start task done" << "\n";
+
+   nRet = UpdateStatus();
+   if (nRet != DEVICE_OK)
+      return nRet;
+
+   initialized_ = true;
+
+   log.close();
+
+   return DEVICE_OK;
+}
+
+int AnalogI::Shutdown()
+{
+   DAQmxStopTask(task_);
+   DAQmxClearTask(task_);
+
+   initialized_ = false;
+   return DEVICE_OK;
+}
+
+int AnalogI::GetSignal(double& volts)
+{
+	ofstream log;
+	log.open (g_logpath, ios::app);
+	log << "---- Get signal " << "\n";
+
+	long niRet = SetupTask();
+	if(niRet)
+		return niRet;
+
+		log << "Set-up task" << "\n";
+	
+	niRet = DAQmxCreateAIVoltageChan(task_, channel_.c_str(), "", DAQmx_Val_Cfg_Default, minV_, maxV_, DAQmx_Val_Volts, "");
+	if(niRet)
+		return LogError(niRet, "CreateAIVoltageChan");
+    
+    log << "Create AnalogI channel" << "\n";
+
+	niRet = DAQmxStartTask(task_);
+	if(niRet)
+		return LogError(niRet, "StartTask");
+	    
+    log << "Start task" << "\n";
+
+	float64 read[1];
+	niRet = DAQmxReadAnalogF64(task_, 1, 10.0, DAQmx_Val_GroupByChannel, read, 1, NULL, NULL);
+	if(niRet)
+		return LogError(niRet, "ReadAnalogF64");
+
+    log << "Read analog64" << "\n";
+
+	volts = read[0];
+
+	    
+    log << "V ="<< volts << "\n";
+
+	log.close();
+	return DEVICE_OK;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Action handlers
+///////////////////////////////////////////////////////////////////////////////
+
+int AnalogI::OnVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+		double v;
+
+		ofstream log;
+		log.open (g_logpath, ios::app);
+		log << "------ Property action " << "\n";
+
+		GetSignal(v);
+
+		log << "------ Get signal " << "\n";
+
+		pProp->Set(v);
+
+		log << "------ Set value " << "\n";
+
+		volts_ = v;
+
+		log.close();
+   }
+   return DEVICE_OK;
+}
+
+int AnalogI::OnMinVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(minV_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(minV_);
+   }
+
+   return DEVICE_OK;
+}
+
+int AnalogI::OnMaxVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(maxV_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(maxV_);
+   }
+
+   return DEVICE_OK;
+}
+
+int AnalogI::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(channel_.c_str());
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(channel_);
+   }
+
+   return DEVICE_OK;
+}
+
+int AnalogI::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(port_.c_str());
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(port_);
+      if (strcmp(port_.c_str(), g_UseCustom) != 0)
+      {
+         // User wants to use one of our auto-detected ports.
+         channel_ = port_;
+      }
    }
 
    return DEVICE_OK;

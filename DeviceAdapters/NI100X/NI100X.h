@@ -44,8 +44,9 @@ public:
 
    void SetContext(MM::Core* core, MM::Device* device);
    std::vector<std::string> GetDevices();
-   std::vector<std::string> GetDigitalPortsForDevice(std::string device);
-   std::vector<std::string> GetAnalogPortsForDevice(std::string device);
+   std::vector<std::string> GetDigitalOPortsForDevice(std::string device);
+   std::vector<std::string> GetAnalogOPortsForDevice(std::string device);
+   std::vector<std::string> GetAnalogIPortsForDevice(std::string device);
    std::string GetPort(std::string line);
 
    int OnTriggeringEnabled(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -96,11 +97,11 @@ private:
 // Analog output
 //////////////////////////////////////////////////////////////////////////////
 
-class AnalogIO : public CSignalIOBase<AnalogIO>, public DAQDevice
+class AnalogO : public CSignalIOBase<AnalogO>, public DAQDevice
 {
 public:
-   AnalogIO();
-   ~AnalogIO();
+   AnalogO();
+   ~AnalogO();
   
    // MMDevice API
    // ------------
@@ -171,11 +172,63 @@ private:
    bool demo_;
 };
 
-class DigitalIO : public CStateDeviceBase<DigitalIO>, public DAQDevice
+class AnalogI : public CSignalIOBase<AnalogI>, public DAQDevice
 {
 public:
-   DigitalIO();
-   ~DigitalIO();
+   AnalogI();
+   ~AnalogI();
+  
+   // MMDevice API
+   // ------------
+   int Initialize();
+   int Shutdown();
+  
+   void GetName(char* name) const;      
+   bool Busy() {return false;}
+  
+   // SignalIO api
+   // ------------
+   int GetSignal(double& volts);
+   int GetLimits(double& minVolts, double& maxVolts) {minVolts = minV_; maxVolts = maxV_; return DEVICE_OK;}
+
+   int SetGateOpen(bool /*open*/){return DEVICE_UNSUPPORTED_COMMAND;}
+   int GetGateOpen(bool& /*open*/){return DEVICE_UNSUPPORTED_COMMAND;}
+   int SetSignal(double /*volts*/){return DEVICE_UNSUPPORTED_COMMAND;}
+   
+   int TestTriggering(){return DEVICE_OK;}
+   
+   int IsDASequenceable(bool& isSequenceable) const
+   {
+	   isSequenceable = false;
+	   return DEVICE_OK;
+   }
+
+   // action interface
+   // ----------------
+   int OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnVolts(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnMinVolts(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnMaxVolts(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+private:
+   bool initialized_;
+   bool busy_;
+   double minV_;
+   double maxV_;
+   double volts_;
+   unsigned int encoding_;
+   unsigned int resolution_;
+
+   long GetListIndex();
+
+};
+
+class DigitalO : public CStateDeviceBase<DigitalO>, public DAQDevice
+{
+public:
+   DigitalO();
+   ~DigitalO();
   
    // MMDevice API
    // ------------
