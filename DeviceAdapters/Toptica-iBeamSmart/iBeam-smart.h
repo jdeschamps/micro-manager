@@ -60,6 +60,7 @@ public:
     // action properties
 	int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnSerial(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnMaxPower(MM::PropertyBase* pProp, MM::ActionType eAct);
     int OnLaserOnOFF(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnPowerCh1(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnPowerCh2(MM::PropertyBase* pProp, MM::ActionType eAct);

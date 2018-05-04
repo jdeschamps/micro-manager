@@ -119,7 +119,7 @@ int iBeamSmart::Initialize()
 	 // Maximum power			
 	 std::ostringstream os;
 	 os << maxpower_;
-     pAct = new CPropertyAction (this, &iBeamSmart::OnSerial);
+     pAct = new CPropertyAction (this, &iBeamSmart::OnMaxPower);
      nRet = CreateProperty("Maximum power (mW)", os.str().c_str(), MM::String, true, pAct);
 	 if (DEVICE_OK != nRet)
           return nRet;
@@ -775,6 +775,18 @@ int iBeamSmart::OnSerial(MM::PropertyBase* pProp, MM::ActionType eAct)
      else if (eAct == MM::AfterSet)
      {
           pProp->Get(serial_);
+     }
+
+     return DEVICE_OK;
+}
+
+int iBeamSmart::OnMaxPower(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+     if (eAct == MM::BeforeGet)
+     {
+		  std::ostringstream os;
+		  os << maxpower_;
+          pProp->Set(os.str().c_str());
      }
 
      return DEVICE_OK;
