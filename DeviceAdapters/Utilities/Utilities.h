@@ -202,6 +202,7 @@ public:
 
    virtual int SetPositionUm(double pos);
    virtual int GetPositionUm(double& pos);
+   virtual int SetRelativePositionUm(double pos);
    virtual int SetPositionSteps(long steps);
    virtual int GetPositionSteps(long& steps);
 
@@ -254,7 +255,7 @@ public:
 
    virtual bool Busy();
 
-   virtual int Move(double vx, double vy) { return DEVICE_UNSUPPORTED_COMMAND; }
+   virtual int Move(double /* vx */, double /* vy */ ) { return DEVICE_UNSUPPORTED_COMMAND; }
    virtual int Stop();
    virtual int Home();
 

@@ -31,6 +31,7 @@ if BUILD_MODBUS
 endif
 if BUILD_OPENCV
    OPENCVGRABBER = OpenCVgrabber
+   FAKECAMERA = FakeCamera
 endif
 if BUILD_PVCAM
    PVCAM = PVCAM PrincetonInstruments
@@ -66,6 +67,7 @@ SUBDIRS = \
 	$(ANDORLASERCOMBINER) \
 	$(ANDORSDK3) \
 	$(DC1394) \
+	$(FAKECAMERA) \
 	$(HIDMANAGER) \
 	$(IDSUEYE) \
 	$(IIDC) \
@@ -91,6 +93,7 @@ SUBDIRS = \
 	Aladdin \
 	Aquinas \
 	Arduino \
+	BlueboxOptics_niji \
 	CARVII \
 	CNCMicroscope \
 	CSUW1 \
@@ -99,6 +102,8 @@ SUBDIRS = \
 	CoherentOBIS \
    CoherentScientificRemote \
 	Conix \
+	CoolLEDpE300 \
+	CoolLEDpE4000 \
 	Corvus \
 	DemoCamera \
 	Diskovery \
@@ -106,6 +111,7 @@ SUBDIRS = \
 	Diskovery \
 	FocalPoint \
 	FreeSerialPort \
+	HydraLMT200 \
 	ImageProcessorChain \
 	K8055 \
 	K8061 \
@@ -135,6 +141,7 @@ SUBDIRS = \
 	PI_GCS_2 \
 	ParallelPort \
 	Pecon \
+	PIEZOCONCEPT \
 	Piezosystem_30DV50 \
 	Piezosystem_NV120_1 \
 	Piezosystem_NV40_1 \
@@ -162,6 +169,7 @@ SUBDIRS = \
 	VariLC \
 	Vincent \
 	Vortran \
+	WieneckeSinske \
 	XCite120PC_Exacte \
 	XCiteLed \
 	XCiteXT600 \

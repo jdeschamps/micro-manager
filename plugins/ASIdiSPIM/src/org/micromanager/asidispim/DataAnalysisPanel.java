@@ -418,11 +418,10 @@ public void runDeskew(final ListeningJPanel caller) {
                zStepPx = ip.getCalibration().pixelDepth / pixelSize;
             }
             
-            // for 45 degrees we shift the same amount as the interplane spacing, so factor of 1.0
-            // assume diSPIM unless marked specifically otherwise
-            // I don't understand why mathematically but it seems that for oSPIM the factor is 1.0
-            //   too instead of being tan(60 degrees) due to the rotation
-            final double dx = zStepPx * (Double) deskewFactor_.getValue();
+            // for diSPIM: we shift the same amount as the interplane spacing (45 degrees), so factor of 1.0
+            // for oSPIM the factor is tan(60 degrees) = 0.577
+            final double geometricShiftFactor_ = ASIdiSPIM.oSPIM ? Math.sqrt(3) : 1.0;
+            final double dx = zStepPx * geometricShiftFactor_ * (Double) deskewFactor_.getValue();
 
             final int nrChannels = ip.getNChannels();
             final int width = ip.getWidth();
@@ -473,16 +472,18 @@ public void runDeskew(final ListeningJPanel caller) {
                if (deskewInvert_.isSelected()) {
                   dir *= -1;
                }
+               final boolean interpolate = deskewInterpolate_.isSelected();
                ImagePlus i = channels[c];
                i.setStack(resize.expandStack(i.getImageStack(), width + width_expansion, height, (dir < 0 ? width_expansion : 0), 0));
                for (int t=0; t<nrFrames; t++) {
                   for (int s=0; s<nrSlices; s++) {  // loop over slices in stack and shift each by an appropriate amount
                      i.setPositionWithoutUpdate(c+1, s+1, t+1);  // all 1-indexed
                      ImageProcessor proc = i.getProcessor();
-                     proc.setInterpolate(false);
+                     if (interpolate) {
+                        proc.setInterpolationMethod(ImageProcessor.BILINEAR);
+                     }
                      proc.translate(dx*s*dir, 0);
-                     nrImagesProcessed++;
-                     IJ.showProgress(nrImagesProcessed, nrImages);
+                     IJ.showProgress(++nrImagesProcessed, nrImages);
                   }
                }
             }
