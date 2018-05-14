@@ -33,7 +33,10 @@
 #define ERR_PORT_OPEN_FAILED 106
 #define ERR_COMMUNICATION 107
 #define ERR_NO_PORT_SET 108
-#define ERR_VERSION_MISMATCH 109
+#define ERR_VERSION_MISMATCH 110
+#define ERR_COMMAND_UNKNOWN 65335
+#define ERR_NO_ANSWER 65011
+#define NO_ERR 65001
 
 
 class MojoHub : public HubBase<MojoHub>  
@@ -100,9 +103,9 @@ public:
    int OnNumberOfLasers(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-
+	
    int WriteToPort(long address, long value);
-   int initializeValues();
+   int ReadPort();
 
    bool initialized_;
    long numlasers_;
@@ -138,6 +141,7 @@ public:
 
 private:
    int WriteToPort(long address, long value);
+   int ReadPort();
 
    long *position_;
    bool initialized_;
@@ -171,6 +175,7 @@ public:
 
 private:
    int WriteToPort(long channel, long state);
+   int ReadPort();
 
    long numChannels_;
    long *state_;
@@ -203,8 +208,8 @@ public:
    int OnNumberOfChannels(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-
    int WriteToPort(long channel, long value);
+   int ReadPort();
    
    bool initialized_;
    long *state_;

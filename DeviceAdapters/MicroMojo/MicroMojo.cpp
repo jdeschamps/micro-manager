@@ -12,7 +12,7 @@
 //
 
 
-#include "MicroMojo.h"
+#include "Mojo.h"
 #include "../../MMDevice/ModuleInterface.h"
 #include <sstream>
 #include <cstdio>
@@ -31,19 +31,20 @@ const char* g_DeviceNameMojoTTL = "Mojo-TTL";
 const char* g_DeviceNameMojoServos = "Mojo-Servos";
 
 const int g_version = 1;
-const int g_maxlasers = 4;
+const int g_maxlasers = 6;
 const int g_maxanaloginput = 8;
-const int g_maxttl = 4;
-const int g_maxpwm = 2;
-const int g_maxservos = 4;
+const int g_maxttl = 6;
+const int g_maxpwm = 6;
+const int g_maxservos = 6;
 
 const int g_offsetaddressLaserMode = 0;
-const int g_offsetaddressLaserDuration = 4;
-const int g_offsetaddressLaserSequence = 8;
-const int g_offsetaddressTTL = 12;
-const int g_offsetaddressServo = 16;
-const int g_offsetaddressPMW = 20;
+const int g_offsetaddressLaserDuration = 10;
+const int g_offsetaddressLaserSequence = 20;
+const int g_offsetaddressTTL = 30;
+const int g_offsetaddressServo = 40;
+const int g_offsetaddressPMW = 50;
 const int g_offsetaddressAnalogInput = 0;
+const int g_Version = 0;
 
 // static lock
 MMThreadLock MojoHub::lock_;
@@ -113,7 +114,10 @@ MojoHub::MojoHub() :
    SetErrorText(ERR_PORT_OPEN_FAILED, "Failed opening Mojo USB device");
    SetErrorText(ERR_BOARD_NOT_FOUND, "Did not find an Mojo board with the correct firmware. Is the Mojo board connected to this serial port?");
    SetErrorText(ERR_NO_PORT_SET, "Hub Device not found. The Mojo Hub device is needed to create this device");
-   SetErrorText(ERR_VERSION_MISMATCH, "The firmware version on the Mojo is not compatible with this adapter.  Please use firmware version ");
+   SetErrorText(ERR_VERSION_MISMATCH, "The firmware version on the Mojo is not compatible with this adapter.  Please use firmware version 1.");
+   SetErrorText(ERR_PORT_OPEN_FAILED, "Failed opening Mojo USB device.");
+   SetErrorText(ERR_COMMAND_UNKNOWN, "An unknown command was sent to the Mojo.");
+   SetErrorText(ERR_NO_ANSWER, "The Mojo did not respond to the command.");
 
    CPropertyAction* pAct = new CPropertyAction(this, &MojoHub::OnPort);
    CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
@@ -322,6 +326,10 @@ int MojoHub::ReadAnswer(long& ans){
 
    ans = tmp;
 
+   if(ans == ERR_COMMAND_UNKNOWN){
+	   return ERR_COMMAND_UNKNOWN;
+   }
+
    return DEVICE_OK;
 }
 
@@ -396,8 +404,7 @@ int MojoLaserTrig::Initialize()
    }
    char hubLabel[MM::MaxStrLength];
    hub->GetLabel(hubLabel);
-   SetParentID(hubLabel); 
-
+   SetParentID(hubLabel); // for backward comp.
 
    // Allocate memory for lasers
    mode_ = new long [GetNumberOfLasers()];
@@ -436,7 +443,6 @@ int MojoLaserTrig::Initialize()
 	   if (nRet != DEVICE_OK)
 		  return nRet;
 	   SetPropertyLimits(seq.str().c_str(), 0, 65535);
-
    }
 
    nRet = UpdateStatus();
@@ -445,24 +451,12 @@ int MojoLaserTrig::Initialize()
 
    initialized_ = true;
 
-  //initializeValues();
-
    return DEVICE_OK;
 }
 
 int MojoLaserTrig::Shutdown()
 {
    initialized_ = false;
-   return DEVICE_OK;
-}
-
-int MojoLaserTrig::initializeValues()
-{
-   for(unsigned int i=0;i<GetNumberOfLasers();i++){	
-		WriteToPort(3*i,4);
-		WriteToPort(3*i+1,0);
-		WriteToPort(3*i+2,65535);
-   }
    return DEVICE_OK;
 }
 
@@ -480,6 +474,28 @@ int MojoLaserTrig::WriteToPort(long address, long value)
    int ret = hub->SendWriteRequest(address, value);
    if (ret != DEVICE_OK)
       return ret;
+
+   return DEVICE_OK;
+}
+
+int MojoLaserTrig::ReadPort()
+{
+   MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
+   if (!hub) {
+      return ERR_NO_PORT_SET;
+   }
+
+   MMThreadGuard myLock(hub->GetLock());
+
+   hub->PurgeComPortH();
+
+   long answer;
+   int ret = hub->ReadAnswer(answer);
+   if (ret != DEVICE_OK)
+      return ret;
+   if (answer != NO_ERR)
+      return ERR_NO_ANSWER;
+
 
    return DEVICE_OK;
 }
@@ -509,9 +525,14 @@ int MojoLaserTrig::OnMode(MM::PropertyBase* pProp, MM::ActionType pAct, long las
       long mode;
       pProp->Get(mode);
 
-      int ret = WriteToPort(g_offsetaddressLaserMode+laser,mode); 
+      int ret = WriteToPort(g_offsetaddressLaserMode+laser,mode);  
 	  if (ret != DEVICE_OK)
 		return ret;
+	
+	  ret = ReadPort(); 
+	  if (ret != DEVICE_OK)
+		return ret;
+
 	  mode_[laser] = mode;
 	}
    
@@ -533,6 +554,12 @@ int MojoLaserTrig::OnDuration(MM::PropertyBase* pProp, MM::ActionType pAct, long
       int ret = WriteToPort(g_offsetaddressLaserDuration+laser,pos); 
 	  if (ret != DEVICE_OK)
 		return ret;
+
+
+	  ret = ReadPort(); 
+	  if (ret != DEVICE_OK)
+		return ret;
+
 	  duration_[laser] = pos;
 	}
    
@@ -554,6 +581,12 @@ int MojoLaserTrig::OnSequence(MM::PropertyBase* pProp, MM::ActionType pAct, long
       int ret = WriteToPort(g_offsetaddressLaserSequence+laser,pos);
 	  if (ret != DEVICE_OK)
 		return ret; 
+
+
+	  ret = ReadPort(); 
+	  if (ret != DEVICE_OK)
+		return ret;
+
 	  sequence_[laser] = pos;
 	}
    
@@ -673,6 +706,27 @@ int MojoTTL::WriteToPort(long address, long state)
 }
 
 
+int MojoTTL::ReadPort()
+{
+   MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
+   if (!hub) {
+      return ERR_NO_PORT_SET;
+   }
+
+   MMThreadGuard myLock(hub->GetLock());
+
+   hub->PurgeComPortH();
+
+   long answer;
+   int ret = hub->ReadAnswer(answer);
+   if (ret != DEVICE_OK)
+      return ret;
+   if (answer != NO_ERR)
+      return ERR_NO_ANSWER;
+
+   return DEVICE_OK;
+}
+
 ///////////////////////////////////////
 /////////// Action handlers
 int MojoTTL::OnNumberOfChannels(MM::PropertyBase* pProp, MM::ActionType pAct)
@@ -700,6 +754,11 @@ int MojoTTL::OnState(MM::PropertyBase* pProp, MM::ActionType pAct, long channel)
       int ret = WriteToPort(g_offsetaddressTTL+channel, pos); 
 	  if (ret != DEVICE_OK)
 		return ret;
+	  	
+	  ret = ReadPort(); 
+	  if (ret != DEVICE_OK)
+		return ret;
+
 	  state_[channel] = pos;
 	}
    
@@ -814,6 +873,28 @@ int MojoServo::WriteToPort(long address, long value)
    return DEVICE_OK;
 }
 
+int MojoServo::ReadPort()
+{
+   MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
+   if (!hub) {
+      return ERR_NO_PORT_SET;
+   }
+
+   MMThreadGuard myLock(hub->GetLock());
+
+   hub->PurgeComPortH();
+
+   long answer;
+   int ret = hub->ReadAnswer(answer);
+   if (ret != DEVICE_OK)
+      return ret;
+   if (answer != NO_ERR)
+      return ERR_NO_ANSWER;
+
+
+   return DEVICE_OK;
+}
+
 
 ///////////////////////////////////////
 /////////// Action handlers
@@ -842,6 +923,11 @@ int MojoServo::OnPosition(MM::PropertyBase* pProp, MM::ActionType pAct, long ser
       int ret = WriteToPort(g_offsetaddressServo+servo,pos); 
 	  if (ret != DEVICE_OK)
 		return ret;
+	  	
+	  ret = ReadPort(); 
+	  if (ret != DEVICE_OK)
+		return ret;
+
 	  position_[servo] = pos;
 	}
    
@@ -871,7 +957,7 @@ MojoPWM::MojoPWM() :
 
    // Number of lasers
    CPropertyAction* pAct = new CPropertyAction(this, &MojoPWM::OnNumberOfChannels);
-   CreateProperty("Number of PMW", "2", MM::Integer, false, pAct, true);
+   CreateProperty("Number of PMW", "1", MM::Integer, false, pAct, true);
    SetPropertyLimits("Number of PMW", 1, g_maxpwm);
 }
 
@@ -954,6 +1040,28 @@ int MojoPWM::WriteToPort(long address, long position)
    return DEVICE_OK;
 }
 
+int MojoPWM::ReadPort()
+{
+   MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
+   if (!hub) {
+      return ERR_NO_PORT_SET;
+   }
+
+   MMThreadGuard myLock(hub->GetLock());
+
+   hub->PurgeComPortH();
+
+   long answer;
+   int ret = hub->ReadAnswer(answer);
+   if (ret != DEVICE_OK)
+      return ret;
+   if (answer != NO_ERR)
+      return ERR_NO_ANSWER;
+
+
+   return DEVICE_OK;
+}
+
 
 ///////////////////////////////////////
 /////////// Action handlers
@@ -986,6 +1094,11 @@ int MojoPWM::OnState(MM::PropertyBase* pProp, MM::ActionType pAct, long channel)
       int ret = WriteToPort(g_offsetaddressPMW+channel,pos); 
 	  if (ret != DEVICE_OK)
 		return ret;
+
+	  ret = ReadPort(); 
+	  if (ret != DEVICE_OK)
+		return ret;
+
 	  state_[channel] = pos;
 	}
    
@@ -1112,6 +1225,7 @@ int MojoInput::ReadFromPort(long& answer)
 
    return DEVICE_OK;
 }
+
 ///////////////////////////////////////
 /////////// Action handlers
 int MojoInput::OnNumberOfChannels(MM::PropertyBase* pProp, MM::ActionType pAct)
