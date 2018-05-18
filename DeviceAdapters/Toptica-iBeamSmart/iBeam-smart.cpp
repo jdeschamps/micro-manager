@@ -78,7 +78,7 @@ port_("Undefined"),
 	SetErrorText(ADAPTER_ERROR_DATA_NOT_FOUND, "Some data could not be extracted, consult the CoreLog.");
 
 	// Description
-	CreateProperty(MM::g_Keyword_Description, "iBeam smart Laser Controller", MM::String, true);
+	CreateProperty(MM::g_Keyword_Description, "iBeam smart Laser Controller", MM::String, true, 0, true);
 
 	// Port
 	CPropertyAction* pAct = new CPropertyAction (this, &iBeamSmart::OnPort);
@@ -97,10 +97,11 @@ void iBeamSmart::GetName(char* Name) const
 
 int iBeamSmart::Initialize()
 {
-	// Make sure prompting ("CMD>") is on and "talk" is set to usual
-	// Otherwise we will get infinite loops (because we are looking for "CMD>")
+	// Make sure prompting ("CMD>") is off (so we get [OK] or error for every answer) 
+	// and "talk" is set to usual.
+	// Otherwise we will get infinite loops (because we are looking for "[OK]")
 	// and some of the data will not be found (e.g. enable EXT from CMD>sh data)
-	int nRet = setPromptOn();
+	int nRet = setPromptOff();
 	if (DEVICE_OK != nRet)
 		return nRet;
 	
@@ -143,7 +144,7 @@ int iBeamSmart::Initialize()
 	// Laser On/Off
 	nRet = getLaserStatus(&laserOn_);
 
-	CPropertyAction* pAct = new CPropertyAction (this, &iBeamSmart::OnLaserOnOFF);
+	CPropertyAction* pAct = new CPropertyAction (this, &iBeamSmart::OnLaserOnOff);
 	if(laserOn_){
 		nRet = CreateProperty("Laser Operation", "On", MM::String, false, pAct);
 		SetAllowedValues("Laser Operation", commandsOnOff);
@@ -219,6 +220,7 @@ int iBeamSmart::Initialize()
 	if (DEVICE_OK != nRet)
 		return nRet;
 
+	pAct = new CPropertyAction (this, &iBeamSmart::OnEnableExt);
 	if(extOn_){
 		nRet = CreateProperty("Enable ext trigger", "On", MM::String, false, pAct);
 		SetAllowedValues("Enable ext trigger", commandsOnOff);
@@ -236,14 +238,13 @@ int iBeamSmart::Initialize()
 	if (DEVICE_OK != nRet)
 		return nRet;
 
+	pAct = new CPropertyAction (this, &iBeamSmart::OnEnableFine);
 	if(fineOn_){
-		pAct = new CPropertyAction (this, &iBeamSmart::OnEnableFine);
 		nRet = CreateProperty("Enable Fine", "On", MM::String, false, pAct);
 		SetAllowedValues("Enable Fine", commandsOnOff);
 		if (DEVICE_OK != nRet)
 			return nRet;
 	} else{
-		pAct = new CPropertyAction (this, &iBeamSmart::OnEnableFine);
 		nRet = CreateProperty("Enable Fine", "Off", MM::String, false, pAct);
 		SetAllowedValues("Enable Fine", commandsOnOff);
 		if (DEVICE_OK != nRet)
@@ -297,9 +298,13 @@ bool iBeamSmart::Busy()
 // Conveniance functions:
 //---------------------------------------------------------------------------
 
-bool iBeamSmart::isPrompt(std::string answer){
+bool iBeamSmart::isOk(std::string answer){
+	if(answer.empty()){
+		return false;
+	}
+
 	// checks that the laser is ready to receive a new command
-	if(answer.compare("CMD>") == 0){
+	if(answer.find("[OK]")  != std::string::npos){
 		return true;
 	}
 	return false;
@@ -330,7 +335,7 @@ int iBeamSmart::publishError(std::string error){
 	log << "iBeamSmart error: " << error;
 	LogMessage(log.str(), false);
 
-	// Make sure that in case of an error, a CMD> prompt 
+	// Make sure that in case of an error, a [OK] prompt 
 	// is not interferring with the next command (to be tested)
 	PurgeComPort(port_.c_str());
 
@@ -358,8 +363,8 @@ int iBeamSmart::getSerial(std::string* serial){
 		return ret;
 
 	// the loop should end when the laser is ready to receive a new command
-	// i.e. when it answers "CMD>"
-	while(!isPrompt(answer)){
+	// i.e. when it answers "[OK]"
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK)
 			return ret;
@@ -389,7 +394,7 @@ int iBeamSmart::getMaxPower(int* maxpower){
 		return ret;
 
 	bool foundline = false;
-	while(!isPrompt(answer)){
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -439,7 +444,7 @@ int iBeamSmart::getPower(int channel, double* power){
 	std::ostringstream tag;
 	tag << "CH" << channel <<", PWR:";
 
-	while(!isPrompt(answer)){
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -477,7 +482,7 @@ int iBeamSmart::getChannelStatus(int channel, bool* status){
 	if (ret != DEVICE_OK) 
 		return ret;
 
-	while(!isPrompt(answer)){
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -508,7 +513,7 @@ int iBeamSmart::getFineStatus(bool* status){
 	if (ret != DEVICE_OK) 
 		return ret;
 
-	while(isPrompt(answer)){
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -544,7 +549,7 @@ int iBeamSmart::getFinePercentage(char fine, double* percentage){
 	tag << "fine " << fine;
 
 	bool foundline = false;
-	while(!isPrompt(answer)){
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -593,7 +598,7 @@ int iBeamSmart::getExtStatus(bool* status){
 
 	bool foundline = false;
 
-	while(!isPrompt(answer)){
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -635,7 +640,7 @@ int iBeamSmart::getLaserStatus(bool* status){
 	if (ret != DEVICE_OK) 
 		return ret;
 
-	while(!isPrompt(answer)){
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -666,7 +671,7 @@ int iBeamSmart::getFirmwareVersion(std::string* version){
 	if (ret != DEVICE_OK) 
 		return ret;
 
-	while(!isPrompt(answer)){
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -706,8 +711,8 @@ int iBeamSmart::setLaserOnOff(bool b){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -718,15 +723,15 @@ int iBeamSmart::setLaserOnOff(bool b){
 			return publishError(answer);
 		}
 	}
-
+	
 	return DEVICE_OK;
 }
 
-int iBeamSmart::setPromptOn(){
+int iBeamSmart::setPromptOff(){
 	std::ostringstream command;
 	std::string answer;
 
-	command << "prom on";
+	command << "prom off";
 
 	// send command
 	int ret = SendSerialCommand(port_.c_str(), command.str().c_str(), "\r");		
@@ -734,8 +739,8 @@ int iBeamSmart::setPromptOn(){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -746,7 +751,7 @@ int iBeamSmart::setPromptOn(){
 			return publishError(answer);
 		}
 	}
-
+	
 	return DEVICE_OK;
 }
 
@@ -762,8 +767,8 @@ int iBeamSmart::setTalkUsual(){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -794,8 +799,8 @@ int iBeamSmart::enableChannel(int channel, bool b){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -826,8 +831,8 @@ int iBeamSmart::setPower(int channel, double pow){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -856,8 +861,8 @@ int iBeamSmart::setFineA(double perc){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -886,8 +891,8 @@ int iBeamSmart::setFineB(double perc){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -917,8 +922,8 @@ int iBeamSmart::enableExt(bool b){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -948,8 +953,8 @@ int iBeamSmart::enableFine(bool b){
 		return ret;
 	}
 
-	// get answer until CMD>
-	while(!isPrompt(answer)){
+	// get answer until [OK]
+	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
 		if (ret != DEVICE_OK){ 
 			return ret;
@@ -994,7 +999,7 @@ int iBeamSmart::OnPort(MM::PropertyBase* pProp , MM::ActionType eAct)
 // Action handlers
 //---------------------------------------------------------------------------
 
-int iBeamSmart::OnLaserOnOFF(MM::PropertyBase* pProp, MM::ActionType eAct){
+int iBeamSmart::OnLaserOnOff(MM::PropertyBase* pProp, MM::ActionType eAct){
 	if (eAct == MM::BeforeGet){ 
 		int ret = getLaserStatus(&laserOn_);
 		if(ret != DEVICE_OK)
@@ -1019,7 +1024,6 @@ int iBeamSmart::OnLaserOnOFF(MM::PropertyBase* pProp, MM::ActionType eAct){
 		if(ret != DEVICE_OK)
 			return ret;
 	}
-
 	return DEVICE_OK;
 }
 
@@ -1154,7 +1158,7 @@ int iBeamSmart::OnEnableCh2(MM::PropertyBase* pProp, MM::ActionType eAct){
 	return DEVICE_OK;
 }
 
-int iBeamSmart::OnEnableFine(MM::PropertyBase* pProp, MM::ActionType eAct){ // here error
+int iBeamSmart::OnEnableFine(MM::PropertyBase* pProp, MM::ActionType eAct){
 	if (eAct == MM::BeforeGet){ 
 		int ret = getFineStatus(&fineOn_);
 		if(ret != DEVICE_OK)
@@ -1202,7 +1206,7 @@ int iBeamSmart::OnEnableFine(MM::PropertyBase* pProp, MM::ActionType eAct){ // h
 }
 
 int iBeamSmart::OnFineA(MM::PropertyBase* pProp, MM::ActionType eAct){
-	if (eAct == MM::BeforeGet){ 
+	if (eAct == MM::BeforeGet){
 		int ret = getFinePercentage('a', &finea_);
 		if(ret != DEVICE_OK)
 			return ret;

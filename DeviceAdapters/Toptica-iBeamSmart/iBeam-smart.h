@@ -65,12 +65,12 @@ public:
 	int setFineB(double perc);
 	int enableExt(bool b);
 	int enableFine(bool b);
-	int setPromptOn();
+	int setPromptOff();
 	int setTalkUsual();
 
     // action properties
 	int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
-    int OnLaserOnOFF(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int OnLaserOnOff(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnPowerCh1(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnPowerCh2(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnEnableExt(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -82,7 +82,7 @@ public:
 	
 	// convenience function 
 	bool isError(std::string answer);
-	bool isPrompt(std::string answer);
+	bool isOk(std::string answer);
 	int getError(std::string error);
 	int publishError(std::string error);
 	std::string to_string(double x);
