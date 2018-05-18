@@ -6,7 +6,7 @@
 // DESCRIPTION:   Controls iBeam smart laser series from Toptica through serial port
 // COPYRIGHT:     EMBL
 // LICENSE:       LGPL
-// AUTHOR:        Joran Deschamps
+// AUTHOR:        Joran Deschamps, 2018
 //-----------------------------------------------------------------------------
 
 
@@ -24,7 +24,12 @@
 //-----------------------------------------------------------------------------
 
 #define ERR_PORT_CHANGE_FORBIDDEN    101
-#define ERR_MAXPOWER_CHANGE_FORBIDDEN    102
+#define LASER_WARNING    102
+#define LASER_ERROR    103
+#define LASER_FATAL_ERROR    104
+#define ADAPTER_POWER_OUTSIDE_RANGE    105
+#define ADAPTER_PERC_OUTSIDE_RANGE    106
+#define ADAPTER_ERROR_DATA_NOT_FOUND    107
 
 //-----------------------------------------------------------------------------
 
@@ -40,27 +45,31 @@ public:
 
     void GetName(char* pszName) const;
     bool Busy();
-	int getMaxPower();
-	double getPower(int channel);
-	bool getChannelStatus(int channel);
-	bool getFineStatus();
-	double getFineValue(char fine);
-	bool getExtStatus();
-	bool getLaserStatus();
 
-	std::string getSerial();
+	// getters
+	int getMaxPower(int* maxpower);
+	int getPower(int channel, double* power);
+	int getChannelStatus(int channel, bool* status);
+	int getFineStatus(bool* status);
+	int getFinePercentage(char fine, double* value);
+	int getExtStatus(bool* status);
+	int getLaserStatus(bool* status);
+	int getSerial(std::string* serial);
+	int getFirmwareVersion(std::string* version);
+
+	// setters
 	int setLaserOnOff(bool b);
-	int enableChannel(int channel, bool b);
+	int enableChannel(int channel, bool enable);
 	int setPower(int channel, double pow);
 	int setFineA(double perc);
 	int setFineB(double perc);
 	int enableExt(bool b);
 	int enableFine(bool b);
+	int setPromptOn();
+	int setTalkUsual();
 
     // action properties
 	int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
-	int OnSerial(MM::PropertyBase* pProp, MM::ActionType eAct);
-	int OnMaxPower(MM::PropertyBase* pProp, MM::ActionType eAct);
     int OnLaserOnOFF(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnPowerCh1(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnPowerCh2(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -70,7 +79,12 @@ public:
 	int OnEnableFine(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnFineA(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnFineB(MM::PropertyBase* pProp, MM::ActionType eAct);
-
+	
+	// convenience function 
+	bool isError(std::string answer);
+	bool isPrompt(std::string answer);
+	int getError(std::string error);
+	int publishError(std::string error);
 	std::string to_string(double x);
 
 private:
