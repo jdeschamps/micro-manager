@@ -590,13 +590,11 @@ int iBeamSmart::getExtStatus(bool* status){
 	std::ostringstream command;
 	std::string answer;
 
-	command << "sh data";
+	command << "sta ext";
 
 	int ret = SendSerialCommand(port_.c_str(), command.str().c_str(), "\r");
 	if (ret != DEVICE_OK) 
 		return ret;
-
-	bool foundline = false;
 
 	while(!isOk(answer)){
 		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
@@ -604,15 +602,10 @@ int iBeamSmart::getExtStatus(bool* status){
 			return ret;
 		}
 
-		if(!foundline){
-			if (answer.find("enable EXT:") != std::string::npos){	
-				if(answer.find("disabled")!=std::string::npos){
-					*status = false;
-				} else if(answer.find("enabled")!=std::string::npos){
-					*status = true;
-				}
-				foundline = true;
-			}
+		if (answer.find("ON") != std::string::npos){	
+			*status = true;
+		} else if (answer.find("OFF") != std::string::npos){	
+			*status = false;
 		}
 
 		// if the laser has an error
@@ -620,12 +613,6 @@ int iBeamSmart::getExtStatus(bool* status){
 			return publishError(answer);
 		}
 	}
-
-	if(!foundline){
-		LogMessage("Could not extract <enable EXT:> from CMD>sh data",false);
-		return ADAPTER_ERROR_DATA_NOT_FOUND;
-	}
-
 
 	return DEVICE_OK;
 }
