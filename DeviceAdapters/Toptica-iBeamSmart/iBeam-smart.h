@@ -30,6 +30,7 @@
 #define ADAPTER_POWER_OUTSIDE_RANGE    105
 #define ADAPTER_PERC_OUTSIDE_RANGE    106
 #define ADAPTER_ERROR_DATA_NOT_FOUND    107
+#define ADAPTER_CANNOT_CHANGE_CH2_EXT_ON    108
 
 //-----------------------------------------------------------------------------
 

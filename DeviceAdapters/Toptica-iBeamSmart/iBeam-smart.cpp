@@ -77,6 +77,7 @@ iBeamSmart::iBeamSmart():
 	SetErrorText(ADAPTER_POWER_OUTSIDE_RANGE, "The specified power is outside the range (0<=power<= max power).");
 	SetErrorText(ADAPTER_PERC_OUTSIDE_RANGE, "The specified percentage is outside the range (0<=percentage<=100).");
 	SetErrorText(ADAPTER_ERROR_DATA_NOT_FOUND, "Some data could not be extracted, consult the CoreLog.");
+	SetErrorText(ADAPTER_CANNOT_CHANGE_CH2_EXT_ON, "Channel2 cannot be (de)activated when external trigger is ON.");
 
 	// Description
 	CreateProperty(MM::g_Keyword_Description, "iBeam smart Laser Controller", MM::String, true, 0, true);
@@ -209,8 +210,8 @@ int iBeamSmart::Initialize()
 		return nRet;
 
 	pAct = new CPropertyAction (this, &iBeamSmart::OnPowerCh2);
-	nRet = CreateProperty("Ch2 Power (mW)", to_string(powerCh2_).c_str(), MM::Float, false, pAct);
-	SetPropertyLimits("Ch2 Power (mW)", 0, maxpower_);
+	nRet = CreateProperty("Ch2 power (mW)", to_string(powerCh2_).c_str(), MM::Float, false, pAct);
+	SetPropertyLimits("Ch2 power (mW)", 0, maxpower_);
 	if (DEVICE_OK != nRet)
 		return nRet;
 
@@ -1186,18 +1187,28 @@ int iBeamSmart::OnEnableCh2(MM::PropertyBase* pProp, MM::ActionType eAct){
 			pProp->Set("Off");
 		}
 	} else if (eAct == MM::AfterSet){
-		std::string status;
-		pProp->Get(status);
-
-		if(status.compare("On") == 0){
-			ch2On_ = true;
-		} else {
-			ch2On_ = false;
-		}
-
-		int ret = enableChannel(2,ch2On_);
+		bool extenabled;
+		int ret = getExtStatus(&extenabled);
 		if(ret != DEVICE_OK)
 			return ret;
+
+		// if the external trigger is enabled, channel 2 activation is not possible
+		if(!extenabled){
+			std::string status;
+			pProp->Get(status);
+
+			if(status.compare("On") == 0){
+				ch2On_ = true;
+			} else {
+				ch2On_ = false;
+			}
+
+			ret = enableChannel(2,ch2On_);
+			if(ret != DEVICE_OK)
+				return ret;
+		} else {
+			return ADAPTER_CANNOT_CHANGE_CH2_EXT_ON;
+		}
 	}
 
 	return DEVICE_OK;
