@@ -53,8 +53,9 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 //-----------------------------------------------------------------------------
 
 iBeamSmart::iBeamSmart():
-port_("Undefined"),
+	port_("Undefined"),
 	serial_("Undefined"),
+	clip_("Undefined"),
 	initialized_(false),
 	busy_(false),
 	powerCh1_(0.00),
@@ -83,6 +84,7 @@ port_("Undefined"),
 	// Port
 	CPropertyAction* pAct = new CPropertyAction (this, &iBeamSmart::OnPort);
 	CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
+
 }
 
 iBeamSmart::~iBeamSmart()
@@ -113,6 +115,9 @@ int iBeamSmart::Initialize()
 	commandsOnOff.push_back("Off");
 	commandsOnOff.push_back("On");
 
+	//////////////////////////////////////////////
+	// Read only properties
+
 	// Serial number
 	nRet = getSerial(&serial_); 
 	if (DEVICE_OK != nRet)
@@ -141,10 +146,23 @@ int iBeamSmart::Initialize()
 	if (DEVICE_OK != nRet)
 		return nRet;
 
+	// Clipping status
+	nRet = getClipStatus(&clip_);
+	if (DEVICE_OK != nRet)
+		return nRet;
+
+	CPropertyAction*  pAct = new CPropertyAction (this, &iBeamSmart::OnClip);
+	nRet = CreateProperty("Clipping status", clip_.c_str(), MM::String, true, pAct);
+	if (DEVICE_OK != nRet)
+		return nRet;
+
+
+	//////////////////////////////////////////////
+	// Properties
 	// Laser On/Off
 	nRet = getLaserStatus(&laserOn_);
 
-	CPropertyAction* pAct = new CPropertyAction (this, &iBeamSmart::OnLaserOnOff);
+	pAct = new CPropertyAction (this, &iBeamSmart::OnLaserOnOff);
 	if(laserOn_){
 		nRet = CreateProperty("Laser Operation", "On", MM::String, false, pAct);
 		SetAllowedValues("Laser Operation", commandsOnOff);
@@ -281,7 +299,7 @@ int iBeamSmart::Shutdown()
 {
 	if (initialized_)
 	{
-		setLaserOnOff(false);
+		setLaserOnOff(false); // The ibeamSmart software doesn't turn off the laser when stoping, I prefer to do it
 		initialized_ = false;	 
 	}
 	return DEVICE_OK;
@@ -381,6 +399,34 @@ int iBeamSmart::getSerial(std::string* serial){
 		}
 	}
 
+	return DEVICE_OK;
+}
+
+int iBeamSmart::getClipStatus(std::string* status){
+	std::ostringstream command;
+	command << "sta clip";
+
+	std::string answer;
+	int ret = SendSerialCommand(port_.c_str(), command.str().c_str(), "\r");
+	if (ret != DEVICE_OK) 
+		return ret;
+
+	while(!isOk(answer)){
+		ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+		if (ret != DEVICE_OK){ 
+			return ret;
+		}
+
+		// The answer is not just space or [OK].
+		if(answer.find_first_not_of(' ') != std::string::npos && !isOk(answer)){ 
+			*status = answer;
+		}
+
+		// if the laser has an error
+		if(isError(answer)){
+			return publishError(answer);
+		}
+	}
 	return DEVICE_OK;
 }
 
@@ -579,7 +625,7 @@ int iBeamSmart::getFinePercentage(char fine, double* percentage){
 	}
 		
 	if(!foundline){
-		LogMessage("Could not extract fine from CMD>sh data",false);
+		LogMessage("Could not extract fine percentage from CMD>sh data",false);
 		return ADAPTER_ERROR_DATA_NOT_FOUND;
 	}
 
@@ -590,7 +636,7 @@ int iBeamSmart::getExtStatus(bool* status){
 	std::ostringstream command;
 	std::string answer;
 
-	command << "sta ext";
+	command << "sta ext"; // this command doesn't appear in the manual but is available from "help" comand
 
 	int ret = SendSerialCommand(port_.c_str(), command.str().c_str(), "\r");
 	if (ret != DEVICE_OK) 
@@ -976,6 +1022,19 @@ int iBeamSmart::OnPort(MM::PropertyBase* pProp , MM::ActionType eAct)
 		}
 
 		pProp->Get(port_);
+	}
+
+	return DEVICE_OK;
+}
+
+int iBeamSmart::OnClip(MM::PropertyBase* pProp , MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		int ret = getClipStatus(&clip_);
+		if(ret != DEVICE_OK)
+			return ret;
+		pProp->Set(clip_.c_str());
 	}
 
 	return DEVICE_OK;
