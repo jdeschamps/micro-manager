@@ -84,7 +84,6 @@ iBeamSmart::iBeamSmart():
 	// Port
 	CPropertyAction* pAct = new CPropertyAction (this, &iBeamSmart::OnPort);
 	CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
-
 }
 
 iBeamSmart::~iBeamSmart()
@@ -176,18 +175,18 @@ int iBeamSmart::Initialize()
 	}
 
 	// Power channel 1
-	nRet = getPower(1, &powerCh1_);
+	nRet = getPower(1,&powerCh1_);
 	if (DEVICE_OK != nRet)
 		return nRet;
 
 	pAct = new CPropertyAction (this, &iBeamSmart::OnPowerCh1);
-	nRet = CreateProperty("Ch1 Power (mW)", to_string(powerCh1_).c_str(), MM::Float, false, pAct);
-	SetPropertyLimits("Ch1 Power (mW)", 0, maxpower_);
+	nRet = CreateProperty("Ch1 power (mW)", to_string(powerCh1_).c_str(), MM::Float, false, pAct);
+	SetPropertyLimits("Ch1 power (mW)", 0, maxpower_);
 	if (DEVICE_OK != nRet)
 		return nRet;
 
 	// Enable channel 1
-	nRet = getChannelStatus(1, &ch1On_);
+	nRet = getChannelStatus(1,&ch1On_);
 	if (DEVICE_OK != nRet)
 		return nRet;
 

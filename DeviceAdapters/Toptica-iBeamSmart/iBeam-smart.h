@@ -56,6 +56,7 @@ public:
 	int getLaserStatus(bool* status);
 	int getSerial(std::string* serial);
 	int getFirmwareVersion(std::string* version);
+	int getClipStatus(std::string* status);
 
 	// setters
 	int setLaserOnOff(bool b);
@@ -79,6 +80,7 @@ public:
 	int OnEnableFine(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnFineA(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnFineB(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnClip(MM::PropertyBase* pProp, MM::ActionType eAct);
 	
 	// convenience function 
 	bool isError(std::string answer);
@@ -89,7 +91,8 @@ public:
 
 private:
 	std::string port_;
-	std::string serial_;    
+	std::string serial_;
+	std::string clip_;    
 	bool initialized_;
 	bool busy_;
 	bool laserOn_;
