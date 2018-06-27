@@ -25,18 +25,11 @@
 //////////////////////////////////////////////////////////////////////////////
 // Error codes
 //
-#define ERR_UNKNOWN_POSITION 101
-#define ERR_INITIALIZE_FAILED 102
-#define ERR_WRITE_FAILED 103
-#define ERR_CLOSE_FAILED 104
-#define ERR_BOARD_NOT_FOUND 105
-#define ERR_PORT_OPEN_FAILED 106
-#define ERR_COMMUNICATION 107
-#define ERR_NO_PORT_SET 108
-#define ERR_VERSION_MISMATCH 110
-#define ERR_COMMAND_UNKNOWN 65335
-#define ERR_NO_ANSWER 65011
-#define NO_ERR 65001
+#define ERR_BOARD_NOT_FOUND 101
+#define ERR_PORT_OPEN_FAILED 102
+#define ERR_NO_PORT_SET 103
+#define ERR_VERSION_MISMATCH 104
+#define ERR_COMMAND_UNKNOWN 65535
 
 
 class MojoHub : public HubBase<MojoHub>  
@@ -105,7 +98,7 @@ public:
 private:
 	
    int WriteToPort(long address, long value);
-   int ReadPort();
+   int ReadFromPort(long& answer);
 
    bool initialized_;
    long numlasers_;
@@ -141,7 +134,7 @@ public:
 
 private:
    int WriteToPort(long address, long value);
-   int ReadPort();
+   int ReadFromPort(long& answer);
 
    long *position_;
    bool initialized_;
@@ -175,7 +168,7 @@ public:
 
 private:
    int WriteToPort(long channel, long state);
-   int ReadPort();
+   int ReadFromPort(long& answer);
 
    long numChannels_;
    long *state_;
@@ -209,7 +202,7 @@ public:
 
 private:
    int WriteToPort(long channel, long value);
-   int ReadPort();
+   int ReadFromPort(long& answer);
    
    bool initialized_;
    long *state_;

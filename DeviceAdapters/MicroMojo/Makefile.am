@@ -1,4 +1,3 @@
-
 AM_CXXFLAGS = $(MMDEVAPI_CXXFLAGS)
 deviceadapter_LTLIBRARIES = libmmgr_dal_MicroMojo.la
 libmmgr_dal_MicroMojo_la_SOURCES = MicroMojo.cpp MicroMojo.h \
