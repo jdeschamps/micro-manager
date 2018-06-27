@@ -1,24 +1,21 @@
 //////////////////////////////////////////////////////////////////////////////
-// FILE:          Mojo.h
+// FILE:          MicroMojo.cpp
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Adapter for Mojo board
+// DESCRIPTION:   Adapter for MojoFPGA board
 // COPYRIGHT:     EMBL
 // LICENSE:       LGPL
 //
-// AUTHOR:        Joran Deschamps, EMBL, January 2017
-//
+// AUTHOR:        Joran Deschamps, EMBL, 2017
+//				  
 //
 
 
-#include "Mojo.h"
+#include "MicroMojo.h"
 #include "../../MMDevice/ModuleInterface.h"
-#include <sstream>
-#include <cstdio>
 
 #ifdef WIN32
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #define snprintf _snprintf 
 #endif
@@ -30,7 +27,10 @@ const char* g_DeviceNameMojoPWM = "Mojo-PWM";
 const char* g_DeviceNameMojoTTL = "Mojo-TTL";
 const char* g_DeviceNameMojoServos = "Mojo-Servos";
 
+//////////////////////////////////////////////////////////////////////////////
+/// Constants that should match the one in the firmware
 const int g_version = 1;
+
 const int g_maxlasers = 6;
 const int g_maxanaloginput = 8;
 const int g_maxttl = 6;
@@ -44,7 +44,8 @@ const int g_offsetaddressTTL = 30;
 const int g_offsetaddressServo = 40;
 const int g_offsetaddressPWM = 50;
 const int g_offsetaddressAnalogInput = 0;
-const int g_Version = 0;
+
+const int g_address_version = 100;
 
 // static lock
 MMThreadLock MojoHub::lock_;
@@ -105,8 +106,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
 MojoHub::MojoHub() :
-initialized_ (false),
-	version_(g_version)
+	initialized_ (false)
 {
 	portAvailable_ = false;
 
@@ -138,15 +138,14 @@ bool MojoHub::Busy()
 
 MM::DeviceDetectionStatus MojoHub::DetectDevice(void)
 {
+	// Code adapted from Arduino.cpp, Micro-Manager, written by Nico Stuurman and Karl Hoover
 	if (initialized_)
 		return MM::CanCommunicate;
 
-	// all conditions must be satisfied...
 	MM::DeviceDetectionStatus result = MM::Misconfigured;
 	char answerTO[MM::MaxStrLength];
 
-	try
-	{
+	try{
 		std::string portLowerCase = port_;
 		for( std::string::iterator its = portLowerCase.begin(); its != portLowerCase.end(); ++its)
 		{
@@ -159,7 +158,6 @@ MM::DeviceDetectionStatus MojoHub::DetectDevice(void)
 			GetCoreCallback()->GetDeviceProperty(port_.c_str(), "AnswerTimeout", answerTO);
 
 			// device specific default communication parameters
-			// for Mojo 
 			GetCoreCallback()->SetDeviceProperty(port_.c_str(), MM::g_Keyword_Handshaking, "0");
 			GetCoreCallback()->SetDeviceProperty(port_.c_str(), MM::g_Keyword_BaudRate, "9600" );
 			GetCoreCallback()->SetDeviceProperty(port_.c_str(), MM::g_Keyword_StopBits, "1");
@@ -176,9 +174,7 @@ MM::DeviceDetectionStatus MojoHub::DetectDevice(void)
 
 			if( DEVICE_OK != ret ){
 				LogMessageCode(ret,true);
-			}
-			else
-			{
+			} else {
 				// to succeed must reach here....
 				result = MM::CanCommunicate;
 			}
@@ -199,6 +195,8 @@ MM::DeviceDetectionStatus MojoHub::DetectDevice(void)
 
 int MojoHub::Initialize()
 {
+	// Code adapted from Arduino.cpp, Micro-Manager, written by Nico Stuurman and Karl Hoover
+
 	// Name
 	int ret = CreateProperty(MM::g_Keyword_Name, g_DeviceNameMojoHub, MM::String, true);
 	if (DEVICE_OK != ret)
@@ -206,20 +204,22 @@ int MojoHub::Initialize()
 
 	MMThreadGuard myLock(lock_);
 
-	// Check that we have a controller:
 	PurgeComPort(port_.c_str());
 
+	// Get controller version
 	ret = GetControllerVersion(version_);
 	if( DEVICE_OK != ret)
 		return ret;
 
-	if (g_version != version_)
+	// Verify that the version of the firmware and adapter match
+	if (g_version != version_){
 		return ERR_VERSION_MISMATCH;
+	}
 
 	CPropertyAction* pAct = new CPropertyAction(this, &MojoHub::OnVersion);
 	std::ostringstream sversion;
 	sversion << version_;
-	CreateProperty("MicroMojo Version", sversion.str().c_str(), MM::Integer, true, pAct);
+	CreateProperty("MicroMojo version", sversion.str().c_str(), MM::Integer, true, pAct);
 
 	initialized_ = true;
 	return DEVICE_OK;
@@ -227,6 +227,7 @@ int MojoHub::Initialize()
 
 int MojoHub::DetectInstalledDevices()
 {
+	// Code adapted from Arduino.cpp, Micro-Manager, written by Nico Stuurman and Karl Hoover
 	if (MM::CanCommunicate == DetectDevice()) 
 	{
 		std::vector<std::string> peripherals; 
@@ -249,7 +250,6 @@ int MojoHub::DetectInstalledDevices()
 	return DEVICE_OK;
 }
 
-
 int MojoHub::Shutdown()
 {
 	initialized_ = false;
@@ -258,7 +258,7 @@ int MojoHub::Shutdown()
 
 int MojoHub::GetControllerVersion(long& version)
 {
-	int ret = SendReadRequest(100);
+	int ret = SendReadRequest(g_address_version);
 	if (ret != DEVICE_OK)
 		return ret;
 
@@ -301,7 +301,8 @@ int MojoHub::SendReadRequest(long address){
 
 int MojoHub::ReadAnswer(long& ans){
 	unsigned char* answer = new unsigned char[4];
-
+	
+	// Code adapted from Arduino.cpp, Micro-Manager, written by Nico Stuurman and Karl Hoover
 	MM::MMTime startTime = GetCurrentMMTime();  
 	unsigned long bytesRead = 0;
 
@@ -313,6 +314,7 @@ int MojoHub::ReadAnswer(long& ans){
 		bytesRead += bR;
 	}
 
+	// Format answer
 	int tmp = answer[3];
 	for(int i=1;i<4;i++){
 		tmp = tmp << 8;
@@ -321,11 +323,7 @@ int MojoHub::ReadAnswer(long& ans){
 
 	ans = tmp;
 
-	std::stringstream strstream;
-	strstream << "Original read: " << tmp;
-	strstream << "Answer read: " << ans;
-	LogMessage(strstream.str(),false);
-
+	// If unknown command answer
 	if(ans == ERR_COMMAND_UNKNOWN){
 		return ERR_COMMAND_UNKNOWN;
 	}
@@ -365,7 +363,7 @@ initialized_ (false),
 {
 	InitializeDefaultErrorMessages();
 
-	// custom error messages
+	// Custom error messages
 	SetErrorText(ERR_NO_PORT_SET, "Hub Device not found. The Mojo Hub device is needed to create this device");
 	SetErrorText(ERR_COMMAND_UNKNOWN, "An unknown command was sent to the Mojo.");
 
@@ -376,9 +374,6 @@ initialized_ (false),
 	// Name
 	ret = CreateProperty(MM::g_Keyword_Name, g_DeviceNameMojoLaserTrig, MM::String, true);
 	assert(DEVICE_OK == ret);
-
-	// parent ID display
-	CreateHubIDProperty();
 
 	// Number of lasers
 	CPropertyAction* pAct = new CPropertyAction(this, &MojoLaserTrig::OnNumberOfLasers);
@@ -400,13 +395,15 @@ void MojoLaserTrig::GetName(char* name) const
 
 int MojoLaserTrig::Initialize()
 {
+	// Parent ID display	
 	MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
 	if (!hub) {
 		return ERR_NO_PORT_SET;
 	}
 	char hubLabel[MM::MaxStrLength];
 	hub->GetLabel(hubLabel);
-	SetParentID(hubLabel); // for backward comp.
+	SetParentID(hubLabel);
+	CreateHubIDProperty();
 
 	// Allocate memory for lasers
 	mode_ = new long [GetNumberOfLasers()];
@@ -581,7 +578,9 @@ initialized_ (false),
 {
 	InitializeDefaultErrorMessages();
 
-	// custom error messages??
+	// Custom error messages
+	SetErrorText(ERR_NO_PORT_SET, "Hub Device not found. The Mojo Hub device is needed to create this device");
+	SetErrorText(ERR_COMMAND_UNKNOWN, "An unknown command was sent to the Mojo.");
 
 	// Description
 	int ret = CreateProperty(MM::g_Keyword_Description, "Mojo TTL", MM::String, true);
@@ -591,10 +590,7 @@ initialized_ (false),
 	ret = CreateProperty(MM::g_Keyword_Name, g_DeviceNameMojoTTL, MM::String, true);
 	assert(DEVICE_OK == ret);
 
-	// parent ID display
-	CreateHubIDProperty();
-
-	// Number of lasers
+	// Number of TTL channels
 	CPropertyAction* pAct = new CPropertyAction(this, &MojoTTL::OnNumberOfChannels);
 	CreateProperty("Number of channels", "4", MM::Integer, false, pAct, true);
 	SetPropertyLimits("Number of channels", 1, g_maxttl);
@@ -613,6 +609,7 @@ void MojoTTL::GetName(char* name) const
 
 int MojoTTL::Initialize()
 {
+	// Parent ID display	
 	MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
 	if (!hub) {
 		return ERR_NO_PORT_SET;
@@ -620,9 +617,7 @@ int MojoTTL::Initialize()
 	char hubLabel[MM::MaxStrLength];
 	hub->GetLabel(hubLabel);
 	SetParentID(hubLabel);
-
-	// set property list
-	// -----------------
+	CreateHubIDProperty();
 
 	// State
 	// -----
@@ -740,7 +735,9 @@ initialized_ (false),
 {
 	InitializeDefaultErrorMessages();
 
-	// custom error messages??
+	// Custom error messages
+	SetErrorText(ERR_NO_PORT_SET, "Hub Device not found. The Mojo Hub device is needed to create this device");
+	SetErrorText(ERR_COMMAND_UNKNOWN, "An unknown command was sent to the Mojo.");
 
 	// Description
 	int ret = CreateProperty(MM::g_Keyword_Description, "Mojo Servo controller", MM::String, true);
@@ -750,10 +747,7 @@ initialized_ (false),
 	ret = CreateProperty(MM::g_Keyword_Name, g_DeviceNameMojoServos, MM::String, true);
 	assert(DEVICE_OK == ret);
 
-	// parent ID display
-	CreateHubIDProperty();
-
-	// Number of lasers
+	// Number of servos
 	CPropertyAction* pAct = new CPropertyAction(this, &MojoServo::OnNumberOfServos);
 	CreateProperty("Number of Servos", "4", MM::Integer, false, pAct, true);
 	SetPropertyLimits("Number of Servos", 1, g_maxservos);
@@ -772,16 +766,15 @@ void MojoServo::GetName(char* name) const
 
 int MojoServo::Initialize()
 {
+	// Parent ID display	
 	MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
 	if (!hub) {
 		return ERR_NO_PORT_SET;
 	}
 	char hubLabel[MM::MaxStrLength];
 	hub->GetLabel(hubLabel);
-	SetParentID(hubLabel); 
-
-	// set property list
-	// -----------------
+	SetParentID(hubLabel);
+	CreateHubIDProperty();
 
 	// State
 	// -----
@@ -895,7 +888,9 @@ initialized_ (false),
 {
 	InitializeDefaultErrorMessages();
 
-	// custom error messages??
+	// Custom error messages
+	SetErrorText(ERR_NO_PORT_SET, "Hub Device not found. The Mojo Hub device is needed to create this device");
+	SetErrorText(ERR_COMMAND_UNKNOWN, "An unknown command was sent to the Mojo.");
 
 	// Description
 	int ret = CreateProperty(MM::g_Keyword_Description, "Mojo PWM controller", MM::String, true);
@@ -905,10 +900,7 @@ initialized_ (false),
 	ret = CreateProperty(MM::g_Keyword_Name, g_DeviceNameMojoPWM, MM::String, true);
 	assert(DEVICE_OK == ret);
 
-	// parent ID display
-	CreateHubIDProperty();
-
-	// Number of lasers
+	// Number of PWM channels
 	CPropertyAction* pAct = new CPropertyAction(this, &MojoPWM::OnNumberOfChannels);
 	CreateProperty("Number of PWM", "1", MM::Integer, false, pAct, true);
 	SetPropertyLimits("Number of PWM", 1, g_maxpwm);
@@ -927,16 +919,15 @@ void MojoPWM::GetName(char* name) const
 
 int MojoPWM::Initialize()
 {
+	// Parent ID display	
 	MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
 	if (!hub) {
 		return ERR_NO_PORT_SET;
 	}
 	char hubLabel[MM::MaxStrLength];
 	hub->GetLabel(hubLabel);
-	SetParentID(hubLabel); 
-
-	// set property list
-	// -----------------
+	SetParentID(hubLabel);
+	CreateHubIDProperty();
 
 	// State
 	// -----
@@ -1051,7 +1042,9 @@ initialized_ (false)
 {
 	InitializeDefaultErrorMessages();
 
-	// custom error messages??
+	// Custom error messages
+	SetErrorText(ERR_NO_PORT_SET, "Hub Device not found. The Mojo Hub device is needed to create this device");
+	SetErrorText(ERR_COMMAND_UNKNOWN, "An unknown command was sent to the Mojo.");
 
 	// Description
 	int ret = CreateProperty(MM::g_Keyword_Description, "Mojo AnalogInput", MM::String, true);
@@ -1061,10 +1054,7 @@ initialized_ (false)
 	ret = CreateProperty(MM::g_Keyword_Name, g_DeviceNameMojoInput, MM::String, true);
 	assert(DEVICE_OK == ret);
 
-	// parent ID display
-	CreateHubIDProperty();
-
-	// Number of lasers
+	// Number of Analog input channels
 	CPropertyAction* pAct = new CPropertyAction(this, &MojoInput::OnNumberOfChannels);
 	CreateProperty("Number of channels", "3", MM::Integer, false, pAct, true);
 	SetPropertyLimits("Number of channels", 1, g_maxanaloginput);
@@ -1087,6 +1077,7 @@ bool MojoInput::Busy()
 
 int MojoInput::Initialize()
 {
+	// Parent ID display	
 	MojoHub* hub = static_cast<MojoHub*>(GetParentHub());
 	if (!hub) {
 		return ERR_NO_PORT_SET;
@@ -1094,9 +1085,7 @@ int MojoInput::Initialize()
 	char hubLabel[MM::MaxStrLength];
 	hub->GetLabel(hubLabel);
 	SetParentID(hubLabel);
-
-	// set property list
-	// -----------------
+	CreateHubIDProperty();
 
 	// State
 	// -----
