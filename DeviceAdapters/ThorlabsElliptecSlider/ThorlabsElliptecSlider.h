@@ -3,10 +3,10 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Controls the Elliptex mutli-position sliders from Thorlabs 	  
+// DESCRIPTION:   Controls the Elliptec 4-position sliders from Thorlabs 	  
 // COPYRIGHT:     EMBL
 // LICENSE:       LGPL
-// AUTHOR:        Joran Deschamps, 2018
+// AUTHOR:        Joran Deschamps and Anindita Dasgupta, 2018
 //-----------------------------------------------------------------------------
 
 

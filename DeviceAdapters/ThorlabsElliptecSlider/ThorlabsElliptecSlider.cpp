@@ -3,10 +3,10 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Controls the Elliptec mutli-position sliders from Thorlabs
+// DESCRIPTION:   Controls the Elliptec 4-position sliders from Thorlabs
 // COPYRIGHT:     EMBL
 // LICENSE:       LGPL
-// AUTHOR:        Joran Deschamps, 2018
+// AUTHOR:        Joran Deschamps and Anindita Dasgupta, 2018
 //-----------------------------------------------------------------------------
 
 #include "ThorlabsElliptecSlider.h"
@@ -14,7 +14,7 @@
 #include <fstream>
 
 const char* g_DeviceName = "Thorlabs ElliptecSlider";
-const char* g_pos0 = "00000000"; 
+const char* g_pos0 = "00000000"; // The positions were experimentally determined
 const char* g_pos1 = "0000001F";
 const char* g_pos2 = "0000003E";
 const char* g_pos3 = "0000005D";
