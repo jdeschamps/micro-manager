@@ -6,7 +6,7 @@
 // DESCRIPTION:   Controls the Elliptec sliders ELL6 and ELL9 from Thorlabs 
 // COPYRIGHT:     EMBL
 // LICENSE:       LGPL
-// AUTHOR:        Joran Deschamps and Anindita Dasgupta, 2018
+// AUTHOR:        Joran Deschamps and Anindita Dasgupta, EMBL 2018
 //-----------------------------------------------------------------------------
 
 
