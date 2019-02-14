@@ -3,7 +3,7 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   SmarAct HCU 3D stage, need special firmware 
+// DESCRIPTION:   SmarAct (H)CU-3D and (H)CU-1D stages, need special firmware 
 //
 // AUTHOR:        Joran Deschamps, EMBL, 2014 
 //				  joran.deschamps@embl.de 
@@ -24,8 +24,8 @@
 #include <iostream>
 #include <fstream>
 
-const char* g_XYStageDeviceName = "SmaractXY";
-const char* g_ZStageDeviceName = "SmaractZ";
+const char* g_XYStageDeviceName = "Smaract 2D";
+const char* g_ZStageDeviceName = "Smaract 1D";
 
 int busy_count = 0;
 
@@ -36,8 +36,8 @@ using namespace std;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-	RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "Smaract Z stage");
-	RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "Smaract XY stage");
+	RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "Smaract 1D stage");
+	RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "Smaract 2D stage");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -546,8 +546,6 @@ int XYStage::GetController(std::string* controller)
 		*controller = "SmarAct HCU-3D";
 	} else if(answer.find("SmarAct CU-3D") != std::string::npos){
 		*controller = "SmarAct CU-3D";
-	} else if(answer.find("SmarAct SCU-3D") != std::string::npos){
-		*controller = "SmarAct SCU-3D";
 	} else {
 		return ERR_IDENTIFICATION_FAIL; 
 	}
@@ -714,7 +712,7 @@ ZStage::ZStage() :
 
 	// create pre-initialization properties
 	// ------------------------------------
-	CreateProperty("Z channel", "2", MM::Integer, false, 0, true);
+	CreateProperty("Z channel", "0", MM::Integer, false, 0, true);
 	AddAllowedValue("Z channel", "0");
 	AddAllowedValue("Z channel", "1");
 	AddAllowedValue("Z channel", "2");
@@ -965,8 +963,10 @@ int ZStage::GetController(std::string* controller)
 		*controller = "SmarAct HCU-3D";
 	} else if(answer.find("SmarAct CU-3D") != std::string::npos){
 		*controller = "SmarAct CU-3D";
-	} else if(answer.find("SmarAct SCU-3D") != std::string::npos){
-		*controller = "SmarAct CU-3D";
+	} else if(answer.find("SmarAct HCU-1D") != std::string::npos){
+		*controller = "SmarAct HCU-1D";
+	} else if(answer.find("SmarAct CU-1D") != std::string::npos){
+		*controller = "SmarAct CU-1D";
 	} else {
 		return ERR_IDENTIFICATION_FAIL; 
 	}
