@@ -24,8 +24,8 @@
 #include <iostream>
 #include <fstream>
 
-const char* g_XYStageDeviceName = "Smaract 2D";
-const char* g_ZStageDeviceName = "Smaract 1D";
+const char* g_XYStageDeviceName = "SmarAct 2D";
+const char* g_ZStageDeviceName = "SmarAct 1D";
 
 int busy_count = 0;
 
@@ -36,8 +36,8 @@ using namespace std;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-	RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "Smaract 1D stage");
-	RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "Smaract 2D stage");
+	RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "SmarAct 1D stage");
+	RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "SmarAct 2D stage");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -164,7 +164,7 @@ XYStage::XYStage() :
 	CreateProperty(MM::g_Keyword_Name, g_XYStageDeviceName, MM::String, true);
 
 	// Description
-	CreateProperty(MM::g_Keyword_Description, "Smaract XYStage", MM::String, true);
+	CreateProperty(MM::g_Keyword_Description, "Smaract 2D Stage", MM::String, true);
 
 	// Port
 	CPropertyAction* pAct = new CPropertyAction (this, &XYStage::OnPort);
@@ -725,7 +725,7 @@ ZStage::ZStage() :
 	CreateProperty(MM::g_Keyword_Name, g_ZStageDeviceName, MM::String, true);
 
 	// Description
-	CreateProperty(MM::g_Keyword_Description, "Smaract ZStage", MM::String, true);
+	CreateProperty(MM::g_Keyword_Description, "Smaract 1D Stage", MM::String, true);
 
 	// Port
 	CPropertyAction* pAct = new CPropertyAction (this, &ZStage::OnPort);
